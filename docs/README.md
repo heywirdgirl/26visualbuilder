@@ -1,4 +1,0 @@
-
-01CURRENT-TASK.md
-
-02COPILOT.md 
