@@ -21,7 +21,7 @@ export default function SidebarPalette({ onDropComponent }: SidebarPaletteProps)
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="absolute bottom-6 right-6 z-50 flex items-center justify-center w-14 h-14 bg-indigo-600 text-white rounded-full shadow-2xl hover:bg-indigo-700 transition-all active:scale-95"
+          className="absolute top-60 left-6 z-50 flex items-center justify-center w-14 h-14 bg-indigo-600 text-white rounded-full shadow-2xl hover:bg-indigo-700 transition-all active:scale-95"
           aria-label="Thêm thành phần"
         >
           <Plus size={24} />
@@ -30,7 +30,7 @@ export default function SidebarPalette({ onDropComponent }: SidebarPaletteProps)
 
       {/* Sidebar trượt ra với hiệu ứng kính mờ (Glassmorphism) */}
       {isOpen && (
-        <div className="absolute inset-y-0 right-0 w-full max-w-xs md:max-w-sm bg-white/70 backdrop-blur-md border-l border-slate-200/50 shadow-2xl z-50 flex flex-col animate-in slide-in-from-right duration-200">
+        <div className="absolute inset-y-0 top-60 left-0 w-full max-w-xs md:max-w-sm bg-white/70 backdrop-blur-md border-l border-slate-200/50 shadow-2xl z-50 flex flex-col animate-in slide-in-from-right duration-200">
           {/* Tiêu đề Sidebar */}
           <div className="flex items-center justify-between p-4 border-b border-slate-100">
             <h3 className="font-semibold text-slate-800 text-base">Thành phần UI (MVP)</h3>
