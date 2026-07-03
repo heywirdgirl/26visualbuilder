@@ -30,7 +30,7 @@ export default function SidebarPalette({ onDropComponent }: SidebarPaletteProps)
 
       {/* Sidebar trượt ra với hiệu ứng kính mờ (Glassmorphism) */}
       {isOpen && (
-        <div className="absolute inset-y-0 top-60 left-0 w-full max-w-xs md:max-w-sm bg-white/70 backdrop-blur-md border-l border-slate-200/50 shadow-2xl z-50 flex flex-col animate-in slide-in-from-right duration-200">
+        <div className="absolute inset-y-0 top-60 left-0 w-full max-w-xs md:max-w-sm bg-white/70 backdrop-blur-md border-r border-slate-200/50 shadow-2xl z-50 flex flex-col animate-in slide-in-from-left duration-200">
           {/* Tiêu đề Sidebar */}
           <div className="flex items-center justify-between p-4 border-b border-slate-100">
             <h3 className="font-semibold text-slate-800 text-base">Thành phần UI (MVP)</h3>
