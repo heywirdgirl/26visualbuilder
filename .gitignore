@@ -40,3 +40,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .env
+
+
+# Generated Tailwind CSS cho Shadow DOM preview
+/public/preview.css

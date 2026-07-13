@@ -3,12 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -H 127.0.0.1 --webpack",
-    "build": "next build",
+    "dev": "concurrently \"npm:dev:next\" \"npm:dev:css\" ",
+    "dev:next": "next dev -H 127.0.0.1 --webpack",
+    "dev:css": "tailwindcss -i ./src/app/globals.css -o ./public/preview.css --watch",
+    "build": "npm run build:css && next build",
+    "build:css": "tailwindcss -i ./src/app/globals.css -o ./public/preview.css --minify",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
+    "@base-ui/react": "^1.6.0",
     "@dnd-kit/abstract": "^0.5.0",
     "@dnd-kit/dom": "^0.5.0",
     "@dnd-kit/react": "^0.5.0",
@@ -25,10 +29,12 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@tailwindcss/cli": "^4.3.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^10.0.3",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
