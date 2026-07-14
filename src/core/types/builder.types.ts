@@ -18,7 +18,7 @@ export interface ButtonProps {
 }
 
 export interface CardProps {
-  title: string;
+  title?: string;
   description?: string;
   content?: string;
 }
