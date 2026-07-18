@@ -19,9 +19,14 @@ export default function Home() {
   return (
     <div className="flex h-screen w-screen overflow-hidden">
       {!menuHidden && (
-        <aside className="w-64 border-r bg-white flex flex-col shrink-0">
-          <div className="flex items-center justify-between p-3 border-b">
-            <span className="text-sm font-semibold">Scene Tree</span>
+        <aside className="fixed z-[60] w-64 border-r bg-white/68 flex flex-col shrink-0 ">
+          <button
+          onClick={toggleMenuHidden}
+          className="fixed top-4 left-4 z-[60] bg-black/68 text-white text-xs px-3 py-2 rounded-full shadow-lg"
+        >
+          Scene Tree
+        </button>
+          <div className="flex items-center justify-between p-3 border-b pt-16">
             <CodeModal />
           </div>
           <TreeView />
@@ -37,9 +42,9 @@ export default function Home() {
       {menuHidden && (
         <button
           onClick={toggleMenuHidden}
-          className="fixed bottom-4 right-4 z-[60] bg-black text-white text-xs px-3 py-2 rounded-full shadow-lg"
+          className="fixed top-4 left-4 z-[60] bg-black/46 text-white text-xs px-3 py-2 rounded-full shadow-lg"
         >
-          Hiện Menu (Ctrl+\)
+          Scene Tree
         </button>
       )}
     </div>
