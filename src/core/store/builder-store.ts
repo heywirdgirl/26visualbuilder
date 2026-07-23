@@ -1,15 +1,19 @@
 // src/core/store/builder-store.ts
 
 import { create } from "zustand";
-import { TreeNode, ComponentType } from "@/core/types/builder.types";
+import { TreeNode } from "@/core/types/builder.types";
+import { getNodeDefinition } from "@/core/registry/node-registry";
+
 
 interface BuilderState {
   tree: TreeNode;
   activeNodeId: string | null;
   menuHidden: boolean;
-
+  editMode: boolean; // 👈 thêm — false: đang dựng cấu trúc, true: đang style qua Inspector
+  
+  toggleEditMode: () => void; // 👈 thêm
   setActiveNode: (id: string | null) => void;
-  addNode: (parentId: string, type: ComponentType) => void;
+  addNode: (parentId: string, defId: string) => void;
   removeNode: (id: string) => void;
   updateNodeProps: (id: string, props: Partial<TreeNode["props"]>) => void;
   moveNode: (id: string, direction: "up" | "down") => void;
@@ -17,17 +21,6 @@ interface BuilderState {
   outdentNode: (id: string) => void;
   toggleMenuHidden: () => void;
 }
-
-const defaultProps = (type: ComponentType) => {
-  switch (type) {
-    case "container":
-      return { direction: "flex-col", gap: 4, padding: 4 };
-    case "button":
-      return { text: "Button", variant: "default", size: "default" };
-    case "card":
-      return { title: "Card Title", description: "", content: "" };
-  }
-};
 
 export function findNode(node: TreeNode, id: string): TreeNode | null {
   if (node.id === id) return node;
@@ -50,24 +43,32 @@ function findParent(node: TreeNode, childId: string): TreeNode | null {
 export const useBuilderStore = create<BuilderState>((set) => ({
   tree: {
     id: "root",
-    type: "container",
+    type: "html.div", // root xử lý như 1 div container thường
     props: { direction: "flex-col", gap: 4, padding: 4 },
     children: [],
   },
   activeNodeId: null,
   menuHidden: false,
+  editMode: false,
 
   setActiveNode: (id) => set({ activeNodeId: id }),
 
-  addNode: (parentId, type) =>
+  addNode: (parentId, defId) =>
     set((state) => {
+      const def = getNodeDefinition(defId);
+      if (!def) return {}; // defId không tồn tại trong registry
+
       const newTree = structuredClone(state.tree);
       const parent = findNode(newTree, parentId);
       if (!parent) return {};
+
+      const parentDef = getNodeDefinition(parent.type);
+      if (!parentDef?.canHaveChildren) return {}; // chặn thêm con vào node không cho phép
+
       parent.children.push({
         id: crypto.randomUUID(),
-        type,
-        props: defaultProps(type),
+        type: defId,
+        props: structuredClone(def.defaultProps),
         children: [],
       });
       return { tree: newTree };
@@ -116,7 +117,8 @@ export const useBuilderStore = create<BuilderState>((set) => ({
       if (index <= 0) return {};
 
       const prevSibling = parent.children[index - 1];
-      if (prevSibling.type !== "container") return {};
+      const prevDef = getNodeDefinition(prevSibling.type);
+      if (!prevDef?.canHaveChildren) return {}; // đọc từ Registry, không hardcode "container" nữa
 
       const [node] = parent.children.splice(index, 1);
       prevSibling.children.push(node);
@@ -140,7 +142,10 @@ export const useBuilderStore = create<BuilderState>((set) => ({
       grandparent.children.splice(parentIndex + 1, 0, node);
       return { tree: newTree };
     }),
-
+  
+  toggleEditMode: () =>
+    set((state) => ({ editMode: !state.editMode })),
+  
   toggleMenuHidden: () =>
     set((state) => ({ menuHidden: !state.menuHidden })),
 }));

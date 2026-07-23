@@ -1,7 +1,8 @@
 // src/features/inspector/utils/tailwind-mapper.ts
 
 
-import { ContainerProps } from "@/core/types/builder.types";
+import { LayoutProps } from "@/core/types/builder.types";
+
 
 export function gapClass(gap?: number) {
   return gap !== undefined ? `gap-${gap}` : "";
@@ -11,7 +12,7 @@ export function paddingClass(padding?: number) {
   return padding !== undefined ? `p-${padding}` : "";
 }
 
-export function containerToClasses(props: ContainerProps): string {
+export function containerToClasses(props: LayoutProps): string {
   return [
     "flex",
     props.direction,
@@ -23,3 +24,4 @@ export function containerToClasses(props: ContainerProps): string {
     .filter(Boolean)
     .join(" ");
 }
+

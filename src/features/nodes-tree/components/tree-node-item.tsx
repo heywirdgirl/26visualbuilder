@@ -2,30 +2,27 @@
 
 "use client";
 
-import { useEffect, useRef } from "react";
-import { TreeNode, ComponentType } from "@/core/types/builder.types";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { TreeNode } from "@/core/types/builder.types";
 import { useBuilderStore } from "@/core/store/builder-store";
+import { getNodeDefinition } from "@/core/registry/node-registry";
 import { cn } from "@/core/utils/cn";
 
 export function TreeNodeItem({ node, depth }: { node: TreeNode; depth: number }) {
   const activeNodeId = useBuilderStore((s) => s.activeNodeId);
   const setActiveNode = useBuilderStore((s) => s.setActiveNode);
-  const addNode = useBuilderStore((s) => s.addNode);
-  const removeNode = useBuilderStore((s) => s.removeNode);
 
   const isActive = node.id === activeNodeId;
   const rowRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(true);
 
-  // Khi node được active (từ click trên Canvas hoặc Tree), tự cuộn tới dòng này
+  const def = getNodeDefinition(node.type);
+  const hasChildren = node.children.length > 0;
+
   useEffect(() => {
-    if (isActive) {
-      rowRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }
+    if (isActive) rowRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [isActive]);
-
-  const handleAddChild = (type: ComponentType) => {
-    addNode(node.id, type);
-  };
 
   return (
     <div>
@@ -34,27 +31,21 @@ export function TreeNodeItem({ node, depth }: { node: TreeNode; depth: number })
         onClick={() => setActiveNode(node.id)}
         style={{ paddingLeft: depth * 16 }}
         className={cn(
-          "flex items-center justify-between text-sm rounded px-2 py-1 cursor-pointer hover:bg-muted",
+          "flex items-center gap-1 text-sm rounded px-2 py-1 cursor-pointer hover:bg-muted",
           isActive && "bg-primary/10 text-primary font-medium"
         )}
       >
-        <span>{node.type}</span>
-
-        <div className="flex gap-1">
-          {node.type === "container" && (
-            <>
-              <button onClick={(e) => { e.stopPropagation(); handleAddChild("container"); }}>+C</button>
-              <button onClick={(e) => { e.stopPropagation(); handleAddChild("button"); }}>+B</button>
-              <button onClick={(e) => { e.stopPropagation(); handleAddChild("card"); }}>+Ca</button>
-            </>
-          )}
-          {node.id !== "root" && (
-            <button onClick={(e) => { e.stopPropagation(); removeNode(node.id); }}>✕</button>
-          )}
-        </div>
+        {hasChildren ? (
+          <button onClick={(e) => { e.stopPropagation(); setExpanded((p) => !p); }} className="shrink-0">
+            {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          </button>
+        ) : (
+          <span className="w-3.5 shrink-0" />
+        )}
+        <span className="truncate">{def?.title ?? node.type}</span>
       </div>
 
-      {node.children.map((child) => (
+      {expanded && node.children.map((child) => (
         <TreeNodeItem key={child.id} node={child} depth={depth + 1} />
       ))}
     </div>

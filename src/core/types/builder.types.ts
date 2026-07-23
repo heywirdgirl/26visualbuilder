@@ -1,38 +1,20 @@
 // src/core/types/builder.types.ts
-export type ComponentType = "container" | "button" | "card";
 
 export type FlexDirection = "flex-row" | "flex-col";
 
-export interface ContainerProps {
-  direction: FlexDirection;
-  gap?: number; // map sang gap-{n}
-  padding?: number; // map sang p-{n}
+// Property layout chung — áp dụng cho MỌI node có canHaveChildren: true
+export interface LayoutProps {
+  direction?: FlexDirection;
+  gap?: number;
+  padding?: number;
   align?: "items-start" | "items-center" | "items-end";
   justify?: "justify-start" | "justify-center" | "justify-between" | "justify-end";
 }
 
-export interface ButtonProps {
-  text: string;
-  variant: "default" | "destructive" | "outline" | "ghost";
-  size: "sm" | "default" | "lg";
-}
-
-export interface CardProps {
-  title?: string;
-  description?: string;
-  content?: string;
-}
-
 export interface TreeNode {
   id: string;
-  type: ComponentType;
-  props: ContainerProps | ButtonProps | CardProps;
+  type: string; // Node Definition id trong Registry, VD "html.div", "shadcn.button"
+  props: Record<string, unknown>;
   children: TreeNode[];
 }
 
-export interface PropMeta {
-  label: string;
-  key: string;
-  inputType: "select" | "text" | "number";
-  options?: string[];
-}
