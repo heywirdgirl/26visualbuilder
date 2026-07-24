@@ -2,7 +2,7 @@
 
 "use client";
 
-import { TreeNode, ContainerProps } from "@/core/types/builder.types";
+import { TreeNode, LayoutProps } from "@/core/types/builder.types";
 import { useBuilderStore } from "@/core/store/builder-store";
 
 const ALIGN_OPTIONS = ["items-start", "items-center", "items-end"] as const;
@@ -10,7 +10,7 @@ const JUSTIFY_OPTIONS = ["justify-start", "justify-center", "justify-between", "
 
 export function LayoutSection({ node }: { node: TreeNode }) {
   const updateNodeProps = useBuilderStore((s) => s.updateNodeProps);
-  const props = node.props as ContainerProps;
+  const props = node.props as LayoutProps;
 
   return (
     <div className="flex flex-col gap-3">
@@ -19,8 +19,8 @@ export function LayoutSection({ node }: { node: TreeNode }) {
       <label className="flex flex-col gap-1 text-sm">
         Hướng
         <select
-          value={props.direction}
-          onChange={(e) => updateNodeProps(node.id, { direction: e.target.value as ContainerProps["direction"] })}
+          value={props.direction ?? "flex-col"}
+          onChange={(e) => updateNodeProps(node.id, { direction: e.target.value as LayoutProps["direction"] })}
           className="border rounded px-2 py-1"
         >
           <option value="flex-row">Ngang (flex-row)</option>
@@ -50,7 +50,7 @@ export function LayoutSection({ node }: { node: TreeNode }) {
         Align
         <select
           value={props.align ?? ""}
-          onChange={(e) => updateNodeProps(node.id, { align: e.target.value as ContainerProps["align"] })}
+          onChange={(e) => updateNodeProps(node.id, { align: (e.target.value || undefined) as LayoutProps["align"] })}
           className="border rounded px-2 py-1"
         >
           <option value="">—</option>
@@ -62,7 +62,7 @@ export function LayoutSection({ node }: { node: TreeNode }) {
         Justify
         <select
           value={props.justify ?? ""}
-          onChange={(e) => updateNodeProps(node.id, { justify: e.target.value as ContainerProps["justify"] })}
+          onChange={(e) => updateNodeProps(node.id, { justify: (e.target.value || undefined) as LayoutProps["justify"] })}
           className="border rounded px-2 py-1"
         >
           <option value="">—</option>

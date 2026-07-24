@@ -19,7 +19,7 @@ export default function Home() {
   return (
     <div className="flex h-screen w-screen overflow-hidden">
       {!menuHidden && (
-        <aside className="fixed z-[60] w-64 border-r bg-white/68 flex flex-col shrink-0 ">
+        <aside className="fixed z-[30] w-50 border-r bg-white/68 flex flex-col shrink-0 ">
           <button
           onClick={toggleMenuHidden}
           className="fixed top-4 left-4 z-[60] bg-black/68 text-white text-xs px-3 py-2 rounded-full shadow-lg"

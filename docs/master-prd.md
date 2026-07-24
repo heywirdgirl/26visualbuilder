@@ -4,11 +4,11 @@ Trình quản lý cấu trúc UI dựa trên Cây Node → Trình tạo JSX sạ
 Mục tiêu: Phác thảo giao diện web có cấu trúc chuẩn xác, tốc độ cao dành cho Developer, tập trung vào đầu ra JSX sạch chuẩn Shadcn.
 1. 📌 Tổng quan sản phẩm
  * Tên sản phẩm: 26visualbuilder.
- * Loại sản phẩm: Ứng dụng Web MVP (Công cụ bổ trợ phát triển - Developer Tool).
+ * Loại sản phẩm: Ứng dụng Web phien ban v1 (Công cụ bổ trợ phát triển - Developer Tool).
  * Mục tiêu MVP: Xác thực tính khả dụng của việc dựng UI bằng quản lý Cây Node (Tree-node) và khả năng tạo mã nguồn JSX sạch.
  * Đầu ra chính: Mã JSX sạch, sử dụng Tailwind CSS và các thuộc tính (Props) chuẩn Shadcn.
- * Thời gian hoàn thiện MVP: 4 tuần.
-2. 🎯 Mục tiêu MVP
+ * Thời gian hoàn thiện v1: 4 tuần.
+2. 🎯 Mục tiêu v1
 Xác thực trực tiếp 2 giả định cốt lõi:
  * Developer có thể phác thảo cấu trúc và layout của website thông qua việc quản lý Cây Node (tương tự Godot/FlutterFlow) nhanh và chuẩn xác hơn việc gõ code tay từ đầu.
  * Mã JSX sinh ra đủ sạch, đúng tư duy Flexbox/Grid để mang vào IDE cá nhân tái sử dụng ngay lập tức mà không cần refactor (sửa lại cấu trúc).
@@ -16,20 +16,20 @@ Xác thực trực tiếp 2 giả định cốt lõi:
  * Đối tượng chính: Lập trình viên độc lập (Indie Developer), Freelancer, Frontend Developer.
  * Nỗi đau (Pain): Ghét các công cụ kéo thả tự do vì sinh code bẩn (div soup) và dễ vỡ layout trên mobile. Nhưng nếu viết code layout tay từ đầu thì tốn thời gian, còn các công cụ vẽ mockup (Figma) thì quá trừu tượng, không ra được code thật.
  * Mong muốn: Dựng khung layout chuẩn Flexbox/Grid trong vài phút bằng tư duy của lập trình viên, cấu trúc tường minh, copy JSX là chạy được ngay.
-4. 🎯 Phạm vi MVP
+4. 🎯 Phạm vi v1
  * Bao gồm (Sẽ làm):
    * Bảng quản lý Cây thư mục Node (Scene Tree) ở cánh trái (Thêm, xóa, đổi thứ tự cha-con của Node).
    * Bảng điều khiển Inspector nổi (Floating) ở cánh phải để sửa nội dung, thuộc tính Shadcn và map class Tailwind.
-   * Chế độ Preview ẩn toàn bộ Menu (Toggle Sidebar) để hiển thị trọn vẹn 100% giao diện trên Viewport máy của Dev.
+   *  ẩn toàn bộ Menu (Toggle Sidebar) để hiển thị trọn vẹn 100% giao diện trên Viewport máy của Dev.moi menu co 1 bien store stase rieng de chu dong dong mo theo y muon
    * Thư viện giới hạn 3 thành phần cốt lõi: Button, Card, Container.
    * Xem trước và sao chép mã nguồn JSX.
- * Loại trừ (Không làm trong MVP): Kéo thả (Drag & Drop) trên màn hình, Undo/Redo, phóng to/thu nhỏ (Zoom), ràng buộc logic/state, lưu trữ đám mây (Cloud sync).
+ * Loại trừ (Không làm trong MVP): Kéo thả (Drag & Drop) trên màn hình, Undo/Redo, phóng to/thu nhỏ (Zoom), ràng buộc logic/state cua project , lưu trữ đám mây (Cloud sync).
 5. 🧱 Luồng người dùng chính (Core User Flow)
  * Mở ứng dụng, xuất hiện một Node Container gốc (Root) trên màn hình.
  * Tại bảng Cây Node bên trái, bấm nút thêm Node con (Ví dụ: Thêm một Container dạng Row, rồi thêm Button vào trong).
  * Click vào Node bất kỳ trên cây, bảng Inspector nổi bên phải xuất hiện.
  * Chỉnh sửa Variant của Shadcn hoặc chỉnh khoảng cách (Gap/Padding) của Container trong Inspector (hệ thống tự map ra class Tailwind).
- * Ấn phím tắt ẩn toàn bộ Menu để kiểm tra giao diện hiển thị 100% thực tế trên trình duyệt.
+ * nhan button menu ẩn tung Menu để kiểm tra giao diện hiển thị 100% thực tế trên trình duyệt.
  * Mở tab Code, sao chép đoạn JSX sạch và paste vào dự án Next.js/React cá nhân.
 6. 🧩 Thành phần MVP (3 Block cốt lõi kiểu Godot Control Node)
  * Container (Tương tự VBox/HBoxContainer trong Godot): Dùng để chia bố cục. Thuộc tính Inspector: Hướng (Xếp dọc - flex-col / Xếp ngang - flex-row), Khoảng cách (gap), Đệm (padding), Căn lề (items-center, justify-between).
