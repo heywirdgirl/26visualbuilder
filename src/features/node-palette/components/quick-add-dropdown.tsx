@@ -36,20 +36,13 @@ export function QuickAddDropdown({
   };
 
   return (
-    <div className="flex flex-col max-h-80">
-      <div className="p-2 border-b">
-        <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            autoFocus
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search node..."
-            className="pl-7 h-8 text-sm"
-          />
-        </div>
+    <div className="flex flex-col max-h-148">
+      <div className="p-2 border-t">
+        <Button variant="ghost" size="sm" className=" text-xs" onClick={onOpenBrowser}>
+          MORE ...
+        </Button>
       </div>
-
+      
       <div className="flex-1 overflow-y-auto p-1">
         {results.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-4">Không tìm thấy node nào</p>
@@ -60,11 +53,7 @@ export function QuickAddDropdown({
         )}
       </div>
 
-      <div className="p-2 border-t">
-        <Button variant="ghost" size="sm" className="w-full text-xs" onClick={onOpenBrowser}>
-          Duyệt tất cả theo danh mục...
-        </Button>
-      </div>
+      
     </div>
   );
 }

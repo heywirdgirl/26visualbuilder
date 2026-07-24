@@ -25,7 +25,7 @@ export function TreeToolbar() {
   const canAdd = !editMode && !!activeNodeId && !!activeDef?.canHaveChildren;
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2 border-b text-xs">
+    <div className="flex items-center gap-3 px-3 py-2 border-b text-xs">
       <Button
         variant={editMode ? "default" : "outline"}
         size="sm"
@@ -52,7 +52,7 @@ export function TreeToolbar() {
             <Plus className="h-3.5 w-3.5" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="start" className="w-72 p-0">
+        <PopoverContent side="right" align="start"  sideOffset={12} className="w-auto p-0">
           {activeNodeId && (
             <QuickAddDropdown
               parentId={activeNodeId}

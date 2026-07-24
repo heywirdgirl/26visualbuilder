@@ -108,7 +108,7 @@ export function AddNodeBrowser({
           )}
         </div>
 
-        <DialogFooter className="gap-2">
+        <DialogFooter className="gap-4 py-4">
           <Button variant="outline" onClick={handleClose}>Cancel</Button>
           <Button onClick={handleAdd} disabled={!selectedId}>Add</Button>
         </DialogFooter>
