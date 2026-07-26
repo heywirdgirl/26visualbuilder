@@ -5,7 +5,9 @@ import { NodeDefinition } from "@/core/types/node-definition.types";
 
 export const containerDefaults = { direction: "flex-col", gap: 4, padding: 4 };
 
-export const htmlNodes: NodeDefinition[] = [
+type RawDef = Omit<NodeDefinition, "nodeKind">;
+
+const rawHtmlNodes: RawDef[] = [
   // ── Layout ──
   { id: "html.div", title: "Div", category: "Layout", tags: ["layout", "container", "flex", "div"], canHaveChildren: true, defaultProps: containerDefaults, propsSchema: [] },
   { id: "html.section", title: "Section", category: "Layout", tags: ["layout", "container", "section"], canHaveChildren: true, defaultProps: containerDefaults, propsSchema: [] },
@@ -46,3 +48,6 @@ export const htmlNodes: NodeDefinition[] = [
   { id: "html.nav", title: "Nav", category: "Navigation", tags: ["navigation", "menu", "container"], canHaveChildren: true, defaultProps: { direction: "flex-row", gap: 4 }, propsSchema: [] },
   { id: "html.a", title: "Link", category: "Navigation", tags: ["navigation", "link", "anchor"], canHaveChildren: true, defaultProps: { direction: "flex-row", gap: 1, href: "#" }, propsSchema: [{ key: "href", label: "Đường dẫn (href)", inputType: "text" }] },
 ];
+
+
+export const htmlNodes: NodeDefinition[] = rawHtmlNodes.map((d) => ({ ...d, nodeKind: "html" }));

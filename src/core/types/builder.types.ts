@@ -16,5 +16,6 @@ export interface TreeNode {
   type: string; // Node Definition id trong Registry, VD "html.div", "shadcn.button"
   props: Record<string, unknown>;
   children: TreeNode[];
+  referenceId?: string;
 }
 

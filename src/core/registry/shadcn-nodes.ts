@@ -3,7 +3,10 @@
 import { NodeDefinition } from "@/core/types/node-definition.types";
 import { containerDefaults } from "./html-nodes";
 
-export const shadcnNodes: NodeDefinition[] = [
+type RawDef = Omit<NodeDefinition, "nodeKind">;
+
+
+const rawShadcnNodes: RawDef[] = [
   // ── Essential ──
   { id: "shadcn.button", title: "Button", category: "Form", tags: ["form", "action", "button", "shadcn"], canHaveChildren: false, defaultProps: { text: "Button", variant: "default", size: "default" }, propsSchema: [
     { key: "text", label: "Nội dung", inputType: "text" },
@@ -119,3 +122,6 @@ export const shadcnNodes: NodeDefinition[] = [
     { key: "triggerText", label: "Text kích hoạt", inputType: "text" },
   ]},
 ];
+
+
+export const shadcnNodes: NodeDefinition[] = rawShadcnNodes.map((d) => ({ ...d, nodeKind: "shadcn" }));

@@ -1,16 +1,15 @@
-// src/features/canvas-preview/components/preview-workspace.tsx
-
+// features/canvas-preview/components/preview-workspace.tsx
 
 "use client";
 
 import { useEffect } from "react";
-import { useBuilderStore } from "@/core/store/builder-store";
+import { useBuilderStore, useActivePage } from "@/core/store/builder-store";
 import { ComponentRenderer } from "./component-renderer";
 import { ShadowRootWrapper } from "./shadow-root-wrapper";
 import { cn } from "@/core/utils/cn";
 
 export function PreviewWorkspace() {
-  const tree = useBuilderStore((s) => s.tree);
+  const activePage = useActivePage();
   const menuHidden = useBuilderStore((s) => s.menuHidden);
   const toggleMenuHidden = useBuilderStore((s) => s.toggleMenuHidden);
 
@@ -33,7 +32,11 @@ export function PreviewWorkspace() {
       )}
     >
       <ShadowRootWrapper>
-        <ComponentRenderer node={tree} />
+        {activePage ? (
+          <ComponentRenderer node={activePage} />
+        ) : (
+          <div className="text-sm text-muted-foreground p-4">Chưa có Page nào được mở</div>
+        )}
       </ShadowRootWrapper>
     </div>
   );

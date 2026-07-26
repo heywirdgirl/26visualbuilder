@@ -10,27 +10,39 @@ export type NodeCategory =
   | "Navigation"
   | "Overlay"
   | "Data Display"
-  | "Templates";
+  | "Templates"
+  | "System"; // 👈 thêm — Folder/Page/Component/Component Instance. KHÔNG hiện trong Node Browser
+              // duyệt theo category thường (Phase 5 xử lý riêng bằng "New Folder/Page/Component").
 
-// Input type cho Inspector tự sinh form (Phase E)
+// Vai trò cấu trúc của Node trong Project — quyết định RULE cha-con.
+// Editor CHỈ đọc rule này (node-rules.ts), không viết if(type === "page") ở bất kỳ đâu khác.
+export type NodeKind =
+  | "folder"
+  | "page"
+  | "component"
+  | "component-instance"
+  | "html"
+  | "shadcn";
+
 export type PropInputType = "text" | "textarea" | "number" | "select" | "checkbox";
 
 export interface PropMeta {
-  key: string;        // tên field trong defaultProps, VD "placeholder"
-  label: string;       // hiển thị trong Inspector, VD "Placeholder"
+  key: string;
+  label: string;
   inputType: PropInputType;
-  options?: string[];  // dùng khi inputType === "select"
+  options?: string[];
 }
 
 // DATA THUẦN — không chứa component/JSX nào. Có thể JSON.stringify,
 // lưu Supabase, export/import, chia sẻ giữa user mà không phụ thuộc React.
 export interface NodeDefinition {
-  id: string;                      // unique, VD "html.div", "shadcn.button"
-  title: string;                   // hiển thị trong Node Browser, VD "Div"
+  id: string;
+  title: string;
   category: NodeCategory;
-  tags: string[];                  // dùng cho search
+  nodeKind: NodeKind; // 👈 thêm — PRD v1.9
+  tags: string[];
   canHaveChildren: boolean;
   defaultProps: Record<string, unknown>;
-  propsSchema: PropMeta[];         // field riêng của node — KHÔNG gồm layout chung
-  icon?: string;                   // tên icon lucide-react, resolve ở tầng UI
+  propsSchema: PropMeta[];
+  icon?: string;
 }
