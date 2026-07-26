@@ -26,6 +26,7 @@ import { Pagination, PaginationContent, PaginationItem, PaginationLink } from "@
 import { TreeNode } from "@/core/types/builder.types";
 import { cn } from "@/core/utils/cn";
 import { escapeJsxText, escapeAttr } from "@/core/utils/escape-jsx-text";
+import { SYSTEM_NODE_IDS } from "@/core/registry/system-nodes";
 
 // App-only mapping: definitionId -> cách render thật + cách xuất JSX string (code-gen).
 // Ngược lại với NodeDefinition (data thuần), file này KHÔNG được serialize/lưu Supabase.
@@ -87,7 +88,32 @@ function placeholderEntry(label: string): RendererEntry {
   };
 }
 
+// ── System nodes (PRD v1.9) ──
+// Page/Component render như 1 container flex bình thường (đã có direction/gap/padding
+// trong defaultProps từ Phase 2) — về mặt hiển thị, khác div ở chỗ Canvas chỉ bắt đầu
+// vẽ từ Page active, và Component chỉ "thấy" nội dung thật khi được resolve qua Instance.
+const systemPageEntry = containerEntry("div");
+const systemComponentEntry = containerEntry("div");
+
+// Folder KHÔNG BAO GIỜ nên xuất hiện trong cây được Canvas duyệt (theo node-rules.ts,
+// Page/Component không thể chứa Folder) — entry này chỉ là lưới an toàn, tránh crash
+// nếu có bug/dữ liệu cũ lẫn Folder vào nhánh render.
+const systemFolderEntry: RendererEntry = {
+  jsxTagName: "div",
+  render: (node) => (
+    <div
+      data-node-id={node.id}
+      className="text-xs text-amber-600 border border-amber-300 rounded px-2 py-1"
+    >
+      Folder không thể render trực tiếp: {String((node.props as { name?: string }).name ?? node.id)}
+    </div>
+  ),
+};
+
 export const rendererMap: Record<string, RendererEntry> = {
+  [SYSTEM_NODE_IDS.page]: systemPageEntry,
+  [SYSTEM_NODE_IDS.component]: systemComponentEntry,
+  [SYSTEM_NODE_IDS.folder]: systemFolderEntry,
   // ══ HTML — Layout (container, dùng chung helper) ══
   "html.div": containerEntry("div"),
   "html.section": containerEntry("section"),

@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -10,20 +10,21 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useBuilderStore } from "@/core/store/builder-store";
-import { treeToJsx } from "../utils/json-to-jsx";
+import { exportProject } from "../utils/export-project";
 
 export function CodeModal() {
   const tree = useBuilderStore((s) => s.tree);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
 
-  const code = treeToJsx(tree);
+  const files = useMemo(() => exportProject(tree), [tree]);
 
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+  const handleCopy = async (path: string, content: string) => {
+    await navigator.clipboard.writeText(content);
+    setCopied(path);
+    setTimeout(() => setCopied(null), 1500);
   };
 
   return (
@@ -32,18 +33,39 @@ export function CodeModal() {
         <Button variant="outline" size="sm">Xem Code</Button>
       </DialogTrigger>
 
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Generated JSX</DialogTitle>
+          <DialogTitle>
+            Generated Project ({files.length} file{files.length !== 1 ? "s" : ""})
+          </DialogTitle>
         </DialogHeader>
 
-        <pre className="bg-muted rounded-md p-4 text-sm overflow-auto max-h-[60vh]">
-          <code>{code}</code>
-        </pre>
+        {files.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-8 text-center">
+            Chưa có Page hoặc Component nào để export.
+          </p>
+        ) : (
+          <Tabs defaultValue={files[0].path}>
+            <TabsList className="flex-wrap h-auto justify-start">
+              {files.map((f) => (
+                <TabsTrigger key={f.path} value={f.path} className="text-xs font-mono">
+                  {f.path}
+                </TabsTrigger>
+              ))}
+            </TabsList>
 
-        <Button onClick={handleCopy} className="self-end">
-          {copied ? "Đã copy!" : "Copy code"}
-        </Button>
+            {files.map((f) => (
+              <TabsContent key={f.path} value={f.path} className="mt-2">
+                <pre className="bg-muted rounded-md p-4 text-sm overflow-auto max-h-[55vh]">
+                  <code>{f.content}</code>
+                </pre>
+                <Button size="sm" className="mt-2" onClick={() => handleCopy(f.path, f.content)}>
+                  {copied === f.path ? "Đã copy!" : "Copy code"}
+                </Button>
+              </TabsContent>
+            ))}
+          </Tabs>
+        )}
       </DialogContent>
     </Dialog>
   );

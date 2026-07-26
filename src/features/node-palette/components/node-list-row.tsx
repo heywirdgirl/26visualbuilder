@@ -4,20 +4,21 @@
 
 import type { ComponentType } from "react";
 import * as LucideIcons from "lucide-react";
-import { NodeDefinition } from "@/core/types/node-definition.types";
 import { cn } from "@/core/utils/cn";
 
 export function NodeListRow({
-  def,
+  title,
+  iconName,
   selected,
   onClick,
 }: {
-  def: NodeDefinition;
+  title: string;
+  iconName?: string;
   selected?: boolean;
   onClick: () => void;
 }) {
-  const IconComp = def.icon
-    ? (LucideIcons as unknown as Record<string, ComponentType<any>>)[def.icon]
+  const IconComp = iconName
+    ? (LucideIcons as unknown as Record<string, ComponentType<any>>)[iconName]
     : undefined;
 
   return (
@@ -29,7 +30,7 @@ export function NodeListRow({
       )}
     >
       {IconComp ? <IconComp className="h-3.5 w-3.5 shrink-0" /> : <span className="w-3.5 shrink-0" />}
-      <span className="truncate">{def.title}</span>
+      <span className="truncate">{title}</span>
     </button>
   );
 }

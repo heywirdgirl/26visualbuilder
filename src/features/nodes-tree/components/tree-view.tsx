@@ -13,7 +13,11 @@ export function TreeView() {
     <div className="flex flex-col h-full">
       <TreeToolbar />
       <div className="flex flex-col gap-1 p-2 overflow-y-auto">
-        <TreeNodeItem node={tree} depth={0} />
+        {/* Project (root) không hiện thành dòng riêng — chỉ hiện thẳng App/Components,
+            đúng UI mong muốn (2 folder kiểu Next.js thay vì 1 root kiểu HTML). */}
+        {tree.children.map((child) => (
+          <TreeNodeItem key={child.id} node={child} depth={0} />
+        ))}
       </div>
     </div>
   );

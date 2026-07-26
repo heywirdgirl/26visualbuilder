@@ -3,6 +3,7 @@
 import { NodeDefinition, NodeCategory } from "@/core/types/node-definition.types";
 import { htmlNodes } from "./html-nodes";
 import { shadcnNodes } from "./shadcn-nodes"; // 👈 sẽ thêm ở Phase A bước 2
+import { systemNodes } from "./system-nodes";
 
 function buildRegistry(defs: NodeDefinition[]): Record<string, NodeDefinition> {
   return defs.reduce((acc, def) => {
@@ -14,6 +15,7 @@ function buildRegistry(defs: NodeDefinition[]): Record<string, NodeDefinition> {
 export const nodeRegistry: Record<string, NodeDefinition> = buildRegistry([
   ...htmlNodes,
   ...shadcnNodes, // 👈 merge tiếp khi có file shadcn-nodes.ts
+  ...systemNodes,
 ]);
 
 export function getNodeDefinition(id: string): NodeDefinition | undefined {
