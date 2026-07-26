@@ -5,7 +5,7 @@ import { TreeNode } from "@/core/types/builder.types";
 import { getNodeDefinition } from "@/core/registry/node-registry";
 import { canContain } from "@/core/registry/node-rules";
 import { SYSTEM_NODE_IDS } from "@/core/registry/system-nodes";
-
+import { useMemo } from "react";
 // ID cố định cho 2 folder gốc + trang Home mặc định — Phase 3/4/5 dùng lại để
 // biết "đây là cấu trúc hệ thống, không cho xoá", không tính lại bằng string rời rạc.
 export const APP_FOLDER_ID = "app-folder";
@@ -40,7 +40,7 @@ interface BuilderState {
   toggleMenuHidden: () => void;
   toggleEditMode: () => void;
   setHighlightReferenceId: (id: string | null) => void;
-  
+  convertToComponent: (nodeId: string, name: string) => void;
 }
 
 export function findNode(node: TreeNode, id: string): TreeNode | null {
@@ -256,6 +256,53 @@ export const useBuilderStore = create<BuilderState>((set) => ({
       return { tree: newTree };
     }),
 
+
+  convertToComponent: (nodeId, name) =>
+    set((state) => {
+      const newTree = structuredClone(state.tree);
+      const parent = findParent(newTree, nodeId);
+      const target = findNode(newTree, nodeId);
+      if (!parent || !target) return {};
+
+      const targetDef = getNodeDefinition(target.type);
+      // Chỉ cho convert node html/shadcn thường — không convert Folder/Page/Component/Instance.
+      if (!targetDef || (targetDef.nodeKind !== "html" && targetDef.nodeKind !== "shadcn")) return {};
+
+      const componentsFolder = findNode(newTree, COMPONENTS_FOLDER_ID);
+      if (!componentsFolder) return {};
+
+      // Clone nội dung gốc với ID MỚI hoàn toàn — vì ID cũ sẽ tái sử dụng cho Instance bên dưới.
+      function cloneWithNewIds(n: TreeNode): TreeNode {
+        return { ...structuredClone(n), id: crypto.randomUUID(), children: n.children.map(cloneWithNewIds) };
+      }
+      const clonedContent = cloneWithNewIds(target);
+
+      const newComponentId = crypto.randomUUID();
+      // Component luôn là 1 wrapper flex (giống Page) chứa nội dung thật làm con —
+      // giữ nhất quán với cách Page đã hoạt động, đổi lại code export sẽ có thêm 1 lớp
+      // <div> bọc ngoài mỗi Component (chấp nhận được, giống hệt cách Page cũng bọc vậy).
+      componentsFolder.children.push({
+        id: newComponentId,
+        type: SYSTEM_NODE_IDS.component,
+        props: { name, direction: "flex-col", gap: 4, padding: 4 },
+        children: [clonedContent],
+      });
+
+      // Thay node gốc bằng Instance — GIỮ NGUYÊN id cũ để activeNodeId không bị mất khi convert.
+      const index = parent.children.findIndex((c) => c.id === nodeId);
+      if (index === -1) return {};
+      parent.children[index] = {
+        id: nodeId,
+        type: SYSTEM_NODE_IDS.componentInstance,
+        props: {},
+        children: [],
+        referenceId: newComponentId,
+      };
+
+      return { tree: newTree };
+    }),
+  
+
   removeNode: (id) =>
     set((state) => {
       if (PROTECTED_IDS.has(id)) return {}; // không cho xoá root/App/Components folder
@@ -357,4 +404,25 @@ export function useActiveNode() {
 
 export function useActivePage() {
   return useBuilderStore((s) => (s.activePageId ? findNode(s.tree, s.activePageId) : null));
+}
+
+function collectComponents(node: TreeNode, acc: { id: string; name: string }[] = []) {
+  if (node.type === SYSTEM_NODE_IDS.component) {
+    acc.push({ id: node.id, name: String((node.props as { name?: string }).name ?? "Component") });
+  }
+  node.children.forEach((c) => collectComponents(c, acc));
+  return acc;
+}
+
+// Dùng cho Add Node Palette — liệt kê mọi Component đã tạo để chọn thêm Instance.
+
+export function useComponentList(): { id: string; name: string }[] {
+  const tree = useBuilderStore((s) => s.tree);
+  return useMemo(() => collectComponents(tree), [tree]);
+}
+
+// Component đang chứa parentId (nếu có) — dùng để ẩn/chặn tự-instance-vào-chính-mình
+// ngay ở UI, trước khi Store phải tự chặn vòng lặp ở tầng data.
+export function useAncestorComponentId(nodeId: string | null): string | null {
+  return useBuilderStore((s) => (nodeId ? findAncestorComponentId(s.tree, nodeId) : null));
 }
