@@ -1,7 +1,10 @@
 // core/registry/shadcn-nodes.ts
 
 import { NodeDefinition } from "@/core/types/node-definition.types";
-import { containerDefaults } from "./html-nodes";
+
+import { containerDefaultStyle } from "./html-nodes";
+
+
 
 type RawDef = Omit<NodeDefinition, "nodeKind">;
 
@@ -13,7 +16,7 @@ const rawShadcnNodes: RawDef[] = [
     { key: "variant", label: "Variant", inputType: "select", options: ["default", "destructive", "outline", "secondary", "ghost", "link"] },
     { key: "size", label: "Size", inputType: "select", options: ["default", "sm", "lg", "icon"] },
   ]},
-  { id: "shadcn.card", title: "Card", category: "Layout", tags: ["layout", "container", "panel", "card", "shadcn"], canHaveChildren: true, defaultProps: containerDefaults, propsSchema: [] },
+    { id: "shadcn.card", title: "Card", category: "Layout", tags: ["layout", "container", "panel", "card", "shadcn"], canHaveChildren: true, defaultProps: {},defaultStyle: containerDefaultStyle, propsSchema: [] },
   { id: "shadcn.input", title: "Input", category: "Form", tags: ["form", "input", "field", "shadcn"], canHaveChildren: false, defaultProps: { placeholder: "Nhập nội dung...", type: "text" }, propsSchema: [
     { key: "placeholder", label: "Placeholder", inputType: "text" },
     { key: "type", label: "Loại input", inputType: "select", options: ["text", "email", "password", "number"] },
@@ -124,4 +127,4 @@ const rawShadcnNodes: RawDef[] = [
 ];
 
 
-export const shadcnNodes: NodeDefinition[] = rawShadcnNodes.map((d) => ({ ...d, nodeKind: "shadcn" }));
+export const shadcnNodes: NodeDefinition[] = rawShadcnNodes.map((d) => ({ ...d, nodeKind: "shadcn",version: 1 }));

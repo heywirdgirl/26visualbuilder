@@ -1,5 +1,7 @@
 // core/types/node-definition.types.ts
 
+
+import { StyleProps } from "./style.types";
 // Nhóm chức năng — dùng để group trong Node Browser (accordion)
 export type NodeCategory =
   | "Layout"
@@ -35,14 +37,18 @@ export interface PropMeta {
 
 // DATA THUẦN — không chứa component/JSX nào. Có thể JSON.stringify,
 // lưu Supabase, export/import, chia sẻ giữa user mà không phụ thuộc React.
+
+
 export interface NodeDefinition {
   id: string;
   title: string;
   category: NodeCategory;
-  nodeKind: NodeKind; // 👈 thêm — PRD v1.9
+  nodeKind: NodeKind;
+  version: number;
   tags: string[];
   canHaveChildren: boolean;
   defaultProps: Record<string, unknown>;
+  defaultStyle?: Partial<StyleProps>; // 👈 mới — chỉ set cho definition cần layout mặc định
   propsSchema: PropMeta[];
   icon?: string;
 }

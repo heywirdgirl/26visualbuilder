@@ -1,21 +1,12 @@
 // src/core/types/builder.types.ts
 
-export type FlexDirection = "flex-row" | "flex-col";
-
-// Property layout chung — áp dụng cho MỌI node có canHaveChildren: true
-export interface LayoutProps {
-  direction?: FlexDirection;
-  gap?: number;
-  padding?: number;
-  align?: "items-start" | "items-center" | "items-end";
-  justify?: "justify-start" | "justify-center" | "justify-between" | "justify-end";
-}
+import { NodeStyle } from "./style.types";
 
 export interface TreeNode {
   id: string;
-  type: string; // Node Definition id trong Registry, VD "html.div", "shadcn.button"
+  type: string;
   props: Record<string, unknown>;
+  style: NodeStyle; // 👈 mới — thay hoàn toàn cho direction/gap/padding từng nằm lẫn trong props
   children: TreeNode[];
   referenceId?: string;
 }
-
