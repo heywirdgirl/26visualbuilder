@@ -3,7 +3,6 @@
 import { create } from "zustand";
 import { TreeNode } from "@/core/types/builder.types";
 import { StyleProps, Breakpoint } from "@/core/types/style.types";
-import { StyleProps, Breakpoint } from "@/core/types/style.types";
 import { getNodeDefinition } from "@/core/registry/node-registry";
 import { canContain } from "@/core/registry/node-rules";
 import { SYSTEM_NODE_IDS } from "@/core/registry/system-nodes";
