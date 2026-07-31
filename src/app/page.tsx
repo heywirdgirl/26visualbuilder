@@ -8,6 +8,7 @@ import { InspectorPanel } from "@/features/inspector/components/inspector-panel"
 import { PreviewWorkspace } from "@/features/canvas-preview/components/preview-workspace";
 import { CodeModal } from "@/features/code-generator/components/code-modal";
 import { useTreeShortcuts } from "@/features/nodes-tree/hooks/use-tree-shortcuts";
+import { ExportImageButton } from "@/features/export-image/components/export-image-button";
 import { useBuilderStore } from "@/core/store/builder-store";
 
 export default function Home() {
@@ -26,8 +27,9 @@ export default function Home() {
         >
           Scene Tree
         </button>
-          <div className="flex items-center justify-between p-3 border-b pt-16">
+          <div className="flex items-center gap-2 p-3 border-b pt-16">
             <CodeModal />
+            <ExportImageButton />
           </div>
           <TreeView />
         </aside>

@@ -12,6 +12,7 @@ export function PreviewWorkspace() {
   const activePage = useActivePage();
   const menuHidden = useBuilderStore((s) => s.menuHidden);
   const toggleMenuHidden = useBuilderStore((s) => s.toggleMenuHidden);
+  const setPreviewContainerEl = useBuilderStore((s) => s.setPreviewContainerEl);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -31,7 +32,7 @@ export function PreviewWorkspace() {
         menuHidden && "fixed inset-0 z-50"
       )}
     >
-      <ShadowRootWrapper>
+      <ShadowRootWrapper onContainerReady={setPreviewContainerEl}>
         {activePage ? (
           <ComponentRenderer node={activePage} />
         ) : (

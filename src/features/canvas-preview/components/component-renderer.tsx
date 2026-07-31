@@ -7,7 +7,7 @@ import { getNodeDefinition } from "@/core/registry/node-registry";
 import { getRendererEntry } from "../constants/renderer-map";
 import { useBuilderStore, findNode } from "@/core/store/builder-store";
 import { SYSTEM_NODE_IDS } from "@/core/registry/system-nodes";
-import { containerToClasses } from "@/features/inspector/utils/tailwind-mapper";
+import { styleToClasses } from "@/core/utils/style-to-classes";
 import { cn } from "@/core/utils/cn";
 
 function ErrorBox({ message }: { message: string }) {
@@ -34,9 +34,6 @@ export function ComponentRenderer({
     setActiveNode(node.id);
   };
 
-  // ── Component Instance: render đúng nội dung Component canonical, nhưng mọi
-  // tương tác (click/highlight/data-node-id) bám theo Instance, KHÔNG phải bản gốc
-  // nằm dưới Components/ folder. ──
   if (node.type === SYSTEM_NODE_IDS.componentInstance) {
     const isHighlighted = node.referenceId === highlightReferenceId;
     const highlightClass = cn(
@@ -65,17 +62,18 @@ export function ComponentRenderer({
       <ComponentRenderer key={child.id} node={child} visitedComponentIds={nextVisited} />
     ));
 
-    const hasLayout = "direction" in componentNode.props;
-    const layoutClass = hasLayout ? containerToClasses(componentNode.props as any) : "";
+    // Style dùng ở đây là style CỦA COMPONENT CANONICAL (componentNode.style) — Instance
+    // không có style riêng cho chính khối hiển thị (giống <Header /> không tự có style,
+    // trừ khi Component definition tự định nghĩa). Giữ đúng hành vi từ trước Phase 2.
+    const contentStyleClass = styleToClasses(componentNode.style);
 
     return (
       <div onClick={handleClick} style={{ display: "contents" }}>
-        {entry.render({ ...componentNode, id: node.id }, children, cn(layoutClass, highlightClass))}
+        {entry.render({ ...componentNode, id: node.id }, children, cn(contentStyleClass, highlightClass))}
       </div>
     );
   }
 
-  // ── Node bình thường: Page/Component (khi là root đang mở)/html/shadcn ──
   const def = getNodeDefinition(node.type);
   const entry = getRendererEntry(node.type);
 
@@ -87,13 +85,14 @@ export function ComponentRenderer({
     <ComponentRenderer key={child.id} node={child} visitedComponentIds={visited} />
   ));
 
-  const hasLayout = "direction" in node.props;
-  const layoutClass = hasLayout ? containerToClasses(node.props as any) : "";
+  // Style áp dụng cho MỌI node, không chỉ container — Button/Input/text giờ cũng nhận
+  // margin/màu/border riêng ngay khi Inspector (Phase 3) có UI cho việc này.
+  const styleClass = styleToClasses(node.style);
   const highlightClass = isActive ? "outline outline-2 outline-blue-500 outline-offset-1" : "";
 
   return (
     <div onClick={handleClick} style={{ display: "contents" }}>
-      {entry.render(node, children, cn(layoutClass, highlightClass))}
+      {entry.render(node, children, cn(styleClass, highlightClass))}
     </div>
   );
 }

@@ -1,20 +1,20 @@
 // src/features/code-generator/utils/json-to-jsx.ts
 
+
 import { TreeNode } from "@/core/types/builder.types";
 import { PropMeta } from "@/core/types/node-definition.types";
 import { getNodeDefinition } from "@/core/registry/node-registry";
 import { getRendererEntry } from "@/features/canvas-preview/constants/renderer-map";
-import { containerToClasses } from "@/features/inspector/utils/tailwind-mapper";
+import { styleToClasses } from "@/core/utils/style-to-classes";
 import { escapeJsxText, escapeAttr } from "@/core/utils/escape-jsx-text";
 import { SYSTEM_NODE_IDS } from "@/core/registry/system-nodes";
 
 export interface ComponentFileInfo {
   pascalName: string;
-  importPath: string; // "@/components/Header" — không kèm ".tsx"
+  importPath: string;
 }
 export type ComponentFileMap = Record<string, ComponentFileInfo>;
 
-// Metadata cấu trúc (tên Page/Component, slug route) — KHÔNG BAO GIỜ là JSX attribute thật.
 const META_ONLY_KEYS = new Set(["text", "name", "slug"]);
 
 function indent(level: number) {
@@ -37,7 +37,6 @@ function genericAttrs(propsSchema: PropMeta[], nodeProps: Record<string, unknown
 export function nodeToJsx(node: TreeNode, level: number, componentFileMap: ComponentFileMap): string {
   const pad = indent(level);
 
-  // ── Component Instance: chỉ emit <PascalName />, nội dung thật nằm ở file component riêng ──
   if (node.type === SYSTEM_NODE_IDS.componentInstance) {
     const info = node.referenceId ? componentFileMap[node.referenceId] : undefined;
     if (!info) return `${pad}{/* Component Instance lỗi tham chiếu: ${node.referenceId ?? "?"} */}`;
@@ -51,13 +50,14 @@ export function nodeToJsx(node: TreeNode, level: number, componentFileMap: Compo
     return `${pad}{/* Node type không tồn tại trong registry: ${node.type} */}`;
   }
 
-  const hasLayout = "direction" in node.props;
-  const className = hasLayout ? containerToClasses(node.props as any) : "";
+  // Trước Phase 2: leaf node (Button/Input/text) KHÔNG có className trong code xuất ra
+  // vì chỉ container mới đọc layout. Giờ mọi node đều gọi styleToClasses — Button có
+  // margin/màu riêng từ Inspector sẽ xuất đúng ra code, không còn thiếu như trước.
+  const className = styleToClasses(node.style);
   const classAttr = className ? ` className="${escapeAttr(className)}"` : "";
 
   if (def.canHaveChildren) {
     const childrenJsx = node.children.map((c) => nodeToJsx(c, level + 1, componentFileMap)).join("\n");
-
     if (entry.toJsx) return entry.toJsx(node, childrenJsx, className, pad);
 
     const attrs = genericAttrs(def.propsSchema, node.props);
@@ -86,7 +86,7 @@ export function collectImports(
   if (node.type === SYSTEM_NODE_IDS.componentInstance) {
     const info = node.referenceId ? componentFileMap[node.referenceId] : undefined;
     if (info) imports.add(`import ${info.pascalName} from "${info.importPath}";`);
-    return imports; // Instance không có children thật trong tree — dừng đệ quy ở đây
+    return imports;
   }
 
   const entry = getRendererEntry(node.type);

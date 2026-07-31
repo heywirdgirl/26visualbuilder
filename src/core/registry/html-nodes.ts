@@ -1,21 +1,20 @@
-
 // core/registry/html-nodes.ts
 
 import { NodeDefinition } from "@/core/types/node-definition.types";
 
-export const containerDefaults = { direction: "flex-col", gap: 4, padding: 4 };
+export const containerDefaultStyle = { direction: "flex-col" as const, gap: 4, padding: 4 };
 
 type RawDef = Omit<NodeDefinition, "nodeKind">;
 
 const rawHtmlNodes: RawDef[] = [
   // ── Layout ──
-  { id: "html.div", title: "Div", category: "Layout", tags: ["layout", "container", "flex", "div"], canHaveChildren: true, defaultProps: containerDefaults, propsSchema: [] },
-  { id: "html.section", title: "Section", category: "Layout", tags: ["layout", "container", "section"], canHaveChildren: true, defaultProps: containerDefaults, propsSchema: [] },
-  { id: "html.main", title: "Main", category: "Layout", tags: ["layout", "container", "main", "content"], canHaveChildren: true, defaultProps: containerDefaults, propsSchema: [] },
-  { id: "html.header", title: "Header", category: "Layout", tags: ["layout", "container", "header", "top"], canHaveChildren: true, defaultProps: containerDefaults, propsSchema: [] },
-  { id: "html.footer", title: "Footer", category: "Layout", tags: ["layout", "container", "footer", "bottom"], canHaveChildren: true, defaultProps: containerDefaults, propsSchema: [] },
-  { id: "html.aside", title: "Aside", category: "Layout", tags: ["layout", "container", "aside", "sidebar"], canHaveChildren: true, defaultProps: containerDefaults, propsSchema: [] },
-  { id: "html.article", title: "Article", category: "Layout", tags: ["layout", "container", "article", "content"], canHaveChildren: true, defaultProps: containerDefaults, propsSchema: [] },
+  { id: "html.div", title: "Div", category: "Layout", tags: ["layout", "container", "flex", "div"], canHaveChildren: true, defaultProps: {}, defaultStyle: containerDefaultStyle, propsSchema: [] },
+  { id: "html.section", title: "Section", category: "Layout", tags: ["layout", "container", "section"], canHaveChildren: true,defaultProps: {}, defaultStyle: containerDefaultStyle, propsSchema: [] },
+  { id: "html.main", title: "Main", category: "Layout", tags: ["layout", "container", "main", "content"], canHaveChildren: true, defaultProps: {}, defaultStyle: containerDefaultStyle, propsSchema: [] },
+  { id: "html.header", title: "Header", category: "Layout", tags: ["layout", "container", "header", "top"], canHaveChildren: true, defaultProps: {}, defaultStyle: containerDefaultStyle, propsSchema: [] },
+  { id: "html.footer", title: "Footer", category: "Layout", tags: ["layout", "container", "footer", "bottom"], canHaveChildren: true, defaultProps: {}, defaultStyle: containerDefaultStyle, propsSchema: [] },
+  { id: "html.aside", title: "Aside", category: "Layout", tags: ["layout", "container", "aside", "sidebar"], canHaveChildren: true, defaultProps: {}, defaultStyle: containerDefaultStyle, propsSchema: [] },
+  { id: "html.article", title: "Article", category: "Layout", tags: ["layout", "container", "article", "content"], canHaveChildren: true, defaultProps: {}, defaultStyle: containerDefaultStyle, propsSchema: [] },
 
   // ── Typography ──
   { id: "html.h1", title: "Heading 1", category: "Typography", tags: ["typography", "heading", "title", "h1"], canHaveChildren: false, defaultProps: { text: "Heading 1" }, propsSchema: [{ key: "text", label: "Nội dung", inputType: "text" }] },
@@ -35,9 +34,9 @@ const rawHtmlNodes: RawDef[] = [
   { id: "html.switch", title: "Switch (HTML)", category: "Form", tags: ["form", "switch", "toggle"], canHaveChildren: false, defaultProps: { label: "Switch", checked: false }, propsSchema: [{ key: "label", label: "Nội dung", inputType: "text" }, { key: "checked", label: "Đã chọn", inputType: "checkbox" }] },
 
   // ── List ──
-  { id: "html.ul", title: "Unordered List", category: "List", tags: ["list", "unordered", "container"], canHaveChildren: true, defaultProps: { direction: "flex-col", gap: 1 }, propsSchema: [] },
-  { id: "html.ol", title: "Ordered List", category: "List", tags: ["list", "ordered", "container"], canHaveChildren: true, defaultProps: { direction: "flex-col", gap: 1 }, propsSchema: [] },
-  { id: "html.li", title: "List Item", category: "List", tags: ["list", "item", "container"], canHaveChildren: true, defaultProps: { direction: "flex-row", gap: 2 }, propsSchema: [] },
+  { id: "html.ul", title: "Unordered List", category: "List", tags: ["list", "unordered", "container"], canHaveChildren: true, defaultProps:{}, defaultStyle:{ direction: "flex-col", gap: 1 }, propsSchema: [] },
+  { id: "html.ol", title: "Ordered List", category: "List", tags: ["list", "ordered", "container"], canHaveChildren: true, defaultProps:{},defaultStyle: { direction: "flex-col", gap: 1 }, propsSchema: [] },
+  { id: "html.li", title: "List Item", category: "List", tags: ["list", "item", "container"], canHaveChildren: true, defaultProps: {},defaultStyle:{ direction: "flex-row", gap: 2 }, propsSchema: [] },
 
   // ── Media ──
   { id: "html.img", title: "Image", category: "Media", tags: ["media", "image", "picture"], canHaveChildren: false, defaultProps: { src: "https://placehold.co/150", alt: "Hình ảnh" }, propsSchema: [{ key: "src", label: "Đường dẫn ảnh", inputType: "text" }, { key: "alt", label: "Alt text", inputType: "text" }] },
@@ -45,8 +44,8 @@ const rawHtmlNodes: RawDef[] = [
   { id: "html.separator", title: "Separator (HTML)", category: "Media", tags: ["media", "divider", "line", "separator"], canHaveChildren: false, defaultProps: { orientation: "horizontal" }, propsSchema: [{ key: "orientation", label: "Hướng", inputType: "select", options: ["horizontal", "vertical"] }] },
 
   // ── Navigation ──
-  { id: "html.nav", title: "Nav", category: "Navigation", tags: ["navigation", "menu", "container"], canHaveChildren: true, defaultProps: { direction: "flex-row", gap: 4 }, propsSchema: [] },
-  { id: "html.a", title: "Link", category: "Navigation", tags: ["navigation", "link", "anchor"], canHaveChildren: true, defaultProps: { direction: "flex-row", gap: 1, href: "#" }, propsSchema: [{ key: "href", label: "Đường dẫn (href)", inputType: "text" }] },
+  { id: "html.nav", title: "Nav", category: "Navigation", tags: ["navigation", "menu", "container"], canHaveChildren: true, defaultProps:{},defaultStyle: { direction: "flex-row", gap: 4 }, propsSchema: [] },
+  { id: "html.a", title: "Link", category: "Navigation", tags: ["navigation", "link", "anchor"], canHaveChildren: true, defaultProps:{href: "#" },defaultStyle: { direction: "flex-row", gap: 1}, propsSchema: [{ key: "href", label: "Đường dẫn (href)", inputType: "text" }] },
 ];
 
 

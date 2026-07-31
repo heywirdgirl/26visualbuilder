@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { TreeNode } from "@/core/types/builder.types";
+import { StyleProps, Breakpoint } from "@/core/types/style.types";
 import { getNodeDefinition } from "@/core/registry/node-registry";
 import { canContain } from "@/core/registry/node-rules";
 import { SYSTEM_NODE_IDS } from "@/core/registry/system-nodes";
@@ -13,6 +14,8 @@ export const COMPONENTS_FOLDER_ID = "components-folder";
 export const HOME_PAGE_ID = "home-page";
 const PROTECTED_IDS = new Set(["root", APP_FOLDER_ID, COMPONENTS_FOLDER_ID]);
 
+
+
 interface BuilderState {
   tree: TreeNode;
   activeNodeId: string | null;
@@ -20,7 +23,11 @@ interface BuilderState {
   menuHidden: boolean;
   editMode: boolean;
   highlightReferenceId: string | null;
-  
+  previewContainerEl: HTMLElement | null;
+  setPreviewContainerEl: (el: HTMLElement | null) => void;
+  activeBreakpoint: Breakpoint;
+  setActiveBreakpoint: (bp: Breakpoint) => void;
+  clearNodeStyleOverride: (id: string, breakpoint: Breakpoint, key: keyof StyleProps) => void;
 
   setActiveNode: (id: string | null) => void;
   setActivePage: (id: string) => void;
@@ -33,6 +40,7 @@ interface BuilderState {
 
   removeNode: (id: string) => void;
   updateNodeProps: (id: string, props: Partial<TreeNode["props"]>) => void;
+  updateNodeStyle: (id: string, breakpoint: Breakpoint, patch: Partial<StyleProps>) => void;
   moveNode: (id: string, direction: "up" | "down") => void;
   indentNode: (id: string) => void;
   outdentNode: (id: string) => void;
@@ -120,37 +128,44 @@ function findFirstPageId(tree: TreeNode): string | null {
 }
 
 export const useBuilderStore = create<BuilderState>((set) => ({
-  tree: {
-    id: "root",
-    type: SYSTEM_NODE_IDS.folder,
-    props: { name: "Project" },
-    children: [
-      {
-        id: APP_FOLDER_ID,
-        type: SYSTEM_NODE_IDS.folder,
-        props: { name: "App" },
-        children: [
-          {
-            id: HOME_PAGE_ID,
-            type: SYSTEM_NODE_IDS.page,
-            props: { name: "Home", slug: "", direction: "flex-col", gap: 4, padding: 4 },
-            children: [],
-          },
-        ],
-      },
-      {
-        id: COMPONENTS_FOLDER_ID,
-        type: SYSTEM_NODE_IDS.folder,
-        props: { name: "Components" },
-        children: [],
-      },
-    ],
-  },
+  // 1. Default tree init — Project/App/Components/Home
+tree: {
+  id: "root",
+  type: SYSTEM_NODE_IDS.folder,
+  props: { name: "Project" },
+  style: { base: {} }, // 👈 thêm
+  children: [
+    {
+      id: APP_FOLDER_ID,
+      type: SYSTEM_NODE_IDS.folder,
+      props: { name: "App" },
+      style: { base: {} }, // 👈 thêm
+      children: [
+        {
+          id: HOME_PAGE_ID,
+          type: SYSTEM_NODE_IDS.page,
+          props: { name: "Home", slug: "" }, // 👈 bỏ direction/gap/padding
+          style: { base: { direction: "flex-col", gap: 4, padding: 4 } }, // 👈 thêm
+          children: [],
+        },
+      ],
+    },
+    {
+      id: COMPONENTS_FOLDER_ID,
+      type: SYSTEM_NODE_IDS.folder,
+      props: { name: "Components" },
+      style: { base: {} }, // 👈 thêm
+      children: [],
+    },
+  ],
+},
   activeNodeId: null,
   activePageId: HOME_PAGE_ID,
   menuHidden: false,
   editMode: false,
+  activeBreakpoint: "base",
   highlightReferenceId: null,
+  previewContainerEl: null,
 
   setActiveNode: (id) => set({ activeNodeId: id }),
   setActivePage: (id) => set({ activePageId: id }),
@@ -171,6 +186,7 @@ export const useBuilderStore = create<BuilderState>((set) => ({
         id: crypto.randomUUID(),
         type: defId,
         props: structuredClone(def.defaultProps),
+        style: { base: structuredClone(def.defaultStyle ?? {}) },
         children: [],
       });
       return { tree: newTree };
@@ -188,6 +204,7 @@ export const useBuilderStore = create<BuilderState>((set) => ({
         id: crypto.randomUUID(),
         type: SYSTEM_NODE_IDS.folder,
         props: { name },
+        style: { base: {} },
         children: [],
       });
       return { tree: newTree };
@@ -201,14 +218,17 @@ export const useBuilderStore = create<BuilderState>((set) => ({
       const parentDef = getNodeDefinition(parent.type);
       if (!parentDef || !canContain(parentDef, "page")) return {};
 
+      const pageDef = getNodeDefinition(SYSTEM_NODE_IDS.page); // 👈 dòng còn thiếu
+
       const newId = crypto.randomUUID();
       parent.children.push({
         id: newId,
         type: SYSTEM_NODE_IDS.page,
-        props: { name, slug, direction: "flex-col", gap: 4, padding: 4 },
+        props: { name, slug }, // 👈 bỏ direction/gap/padding thừa
+        style: { base: structuredClone(pageDef?.defaultStyle ?? {}) },
         children: [],
       });
-      return { tree: newTree, activePageId: newId }; // mở luôn trang vừa tạo
+      return { tree: newTree, activePageId: newId };
     }),
 
   addComponent: (parentId, name) =>
@@ -219,10 +239,13 @@ export const useBuilderStore = create<BuilderState>((set) => ({
       const parentDef = getNodeDefinition(parent.type);
       if (!parentDef || !canContain(parentDef, "component")) return {};
 
+      const componentDef = getNodeDefinition(SYSTEM_NODE_IDS.component); // 👈 dòng còn thiếu
+
       parent.children.push({
         id: crypto.randomUUID(),
         type: SYSTEM_NODE_IDS.component,
-        props: { name, direction: "flex-col", gap: 4, padding: 4 },
+        props: { name }, // 👈 bỏ direction/gap/padding thừa
+        style: { base: structuredClone(componentDef?.defaultStyle ?? {}) },
         children: [],
       });
       return { tree: newTree };
@@ -250,6 +273,7 @@ export const useBuilderStore = create<BuilderState>((set) => ({
         id: crypto.randomUUID(),
         type: SYSTEM_NODE_IDS.componentInstance,
         props: {},
+        style: { base: {} },
         children: [],
         referenceId: componentNodeId,
       });
@@ -265,36 +289,34 @@ export const useBuilderStore = create<BuilderState>((set) => ({
       if (!parent || !target) return {};
 
       const targetDef = getNodeDefinition(target.type);
-      // Chỉ cho convert node html/shadcn thường — không convert Folder/Page/Component/Instance.
       if (!targetDef || (targetDef.nodeKind !== "html" && targetDef.nodeKind !== "shadcn")) return {};
 
       const componentsFolder = findNode(newTree, COMPONENTS_FOLDER_ID);
       if (!componentsFolder) return {};
 
-      // Clone nội dung gốc với ID MỚI hoàn toàn — vì ID cũ sẽ tái sử dụng cho Instance bên dưới.
       function cloneWithNewIds(n: TreeNode): TreeNode {
         return { ...structuredClone(n), id: crypto.randomUUID(), children: n.children.map(cloneWithNewIds) };
       }
       const clonedContent = cloneWithNewIds(target);
 
       const newComponentId = crypto.randomUUID();
-      // Component luôn là 1 wrapper flex (giống Page) chứa nội dung thật làm con —
-      // giữ nhất quán với cách Page đã hoạt động, đổi lại code export sẽ có thêm 1 lớp
-      // <div> bọc ngoài mỗi Component (chấp nhận được, giống hệt cách Page cũng bọc vậy).
+      const componentDef = getNodeDefinition(SYSTEM_NODE_IDS.component); // 👈 dòng còn thiếu
+
       componentsFolder.children.push({
         id: newComponentId,
         type: SYSTEM_NODE_IDS.component,
-        props: { name, direction: "flex-col", gap: 4, padding: 4 },
+        props: { name }, // 👈 bỏ direction/gap/padding thừa
+        style: { base: structuredClone(componentDef?.defaultStyle ?? {}) },
         children: [clonedContent],
       });
 
-      // Thay node gốc bằng Instance — GIỮ NGUYÊN id cũ để activeNodeId không bị mất khi convert.
       const index = parent.children.findIndex((c) => c.id === nodeId);
       if (index === -1) return {};
       parent.children[index] = {
         id: nodeId,
         type: SYSTEM_NODE_IDS.componentInstance,
         props: {},
+        style: { base: {} },
         children: [],
         referenceId: newComponentId,
       };
@@ -334,6 +356,31 @@ export const useBuilderStore = create<BuilderState>((set) => ({
       return { tree: newTree };
     }),
 
+  updateNodeStyle: (id, breakpoint, patch) =>
+    set((state) => {
+      const newTree = structuredClone(state.tree);
+      const node = findNode(newTree, id);
+      if (!node) return {};
+      if (breakpoint === "base") {
+        node.style.base = { ...node.style.base, ...patch };
+      } else {
+        node.style[breakpoint] = { ...(node.style[breakpoint] ?? {}), ...patch };
+      }
+      return { tree: newTree };
+    }),
+  
+  setActiveBreakpoint: (bp) => set({ activeBreakpoint: bp }),
+
+  clearNodeStyleOverride: (id, breakpoint, key) =>
+    set((state) => {
+      if (breakpoint === "base") return {}; // base luôn có giá trị — không có gì để "reset về kế thừa"
+      const newTree = structuredClone(state.tree);
+      const node = findNode(newTree, id);
+      if (!node || !node.style[breakpoint]) return {};
+      delete node.style[breakpoint]![key];
+      return { tree: newTree };
+    }),
+  
   moveNode: (id, direction) =>
     set((state) => {
       const newTree = structuredClone(state.tree);
@@ -396,6 +443,9 @@ export const useBuilderStore = create<BuilderState>((set) => ({
   toggleMenuHidden: () => set((state) => ({ menuHidden: !state.menuHidden })),
   toggleEditMode: () => set((state) => ({ editMode: !state.editMode })),
   setHighlightReferenceId: (id) => set({ highlightReferenceId: id }),
+  setPreviewContainerEl: (el) => set({ previewContainerEl: el }),
+
+  
 }));
 
 export function useActiveNode() {
