@@ -44,7 +44,7 @@ export interface NodeDefinition {
   title: string;
   category: NodeCategory;
   nodeKind: NodeKind;
-  version: number;
+  version?: number;
   tags: string[];
   canHaveChildren: boolean;
   defaultProps: Record<string, unknown>;
