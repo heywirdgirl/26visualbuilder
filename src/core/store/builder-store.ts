@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { TreeNode } from "@/core/types/builder.types";
 import { StyleProps, Breakpoint } from "@/core/types/style.types";
+import { StyleProps, Breakpoint } from "@/core/types/style.types";
 import { getNodeDefinition } from "@/core/registry/node-registry";
 import { canContain } from "@/core/registry/node-rules";
 import { SYSTEM_NODE_IDS } from "@/core/registry/system-nodes";
@@ -15,6 +16,7 @@ export const HOME_PAGE_ID = "home-page";
 const PROTECTED_IDS = new Set(["root", APP_FOLDER_ID, COMPONENTS_FOLDER_ID]);
 
 
+
 interface BuilderState {
   tree: TreeNode;
   activeNodeId: string | null;
@@ -22,7 +24,11 @@ interface BuilderState {
   menuHidden: boolean;
   editMode: boolean;
   highlightReferenceId: string | null;
-  
+  previewContainerEl: HTMLElement | null;
+  setPreviewContainerEl: (el: HTMLElement | null) => void;
+  activeBreakpoint: Breakpoint;
+  setActiveBreakpoint: (bp: Breakpoint) => void;
+  clearNodeStyleOverride: (id: string, breakpoint: Breakpoint, key: keyof StyleProps) => void;
 
   setActiveNode: (id: string | null) => void;
   setActivePage: (id: string) => void;
@@ -158,7 +164,9 @@ tree: {
   activePageId: HOME_PAGE_ID,
   menuHidden: false,
   editMode: false,
+  activeBreakpoint: "base",
   highlightReferenceId: null,
+  previewContainerEl: null,
 
   setActiveNode: (id) => set({ activeNodeId: id }),
   setActivePage: (id) => set({ activePageId: id }),
@@ -361,7 +369,19 @@ tree: {
       }
       return { tree: newTree };
     }),
+  
+  setActiveBreakpoint: (bp) => set({ activeBreakpoint: bp }),
 
+  clearNodeStyleOverride: (id, breakpoint, key) =>
+    set((state) => {
+      if (breakpoint === "base") return {}; // base luôn có giá trị — không có gì để "reset về kế thừa"
+      const newTree = structuredClone(state.tree);
+      const node = findNode(newTree, id);
+      if (!node || !node.style[breakpoint]) return {};
+      delete node.style[breakpoint]![key];
+      return { tree: newTree };
+    }),
+  
   moveNode: (id, direction) =>
     set((state) => {
       const newTree = structuredClone(state.tree);
@@ -424,6 +444,9 @@ tree: {
   toggleMenuHidden: () => set((state) => ({ menuHidden: !state.menuHidden })),
   toggleEditMode: () => set((state) => ({ editMode: !state.editMode })),
   setHighlightReferenceId: (id) => set({ highlightReferenceId: id }),
+  setPreviewContainerEl: (el) => set({ previewContainerEl: el }),
+
+  
 }));
 
 export function useActiveNode() {
