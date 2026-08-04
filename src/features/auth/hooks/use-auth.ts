@@ -46,19 +46,17 @@ export function useAuth() {
 
     try {
       const redirectTo =
-  typeof window !== "undefined"
-    ? new URL(
-        "/auth/callback",
-        process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin
-      ).toString()
-    : undefined;
+        typeof window !== "undefined"
+          ? new URL("/auth/callback", window.location.origin).toString()
+          : undefined;
 
-const { error } = await supabase.auth.signInWithOAuth({
-  provider: "google",
-  options: {
-    redirectTo,
-  },
-});
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo,
+        },
+      });
+      if (error) console.error("signInWithOAuth thất bại:", error);
     } finally {
       setIsSigningIn(false);
     }
