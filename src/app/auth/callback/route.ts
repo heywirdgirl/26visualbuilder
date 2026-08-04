@@ -14,10 +14,16 @@ export async function GET(request: Request) {
   }
 
   if (code) {
-    const supabase = await createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    try {
+      const supabase = await createClient();
+      const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
 
-    if (!error) {
+      if (exchangeError) {
+        console.error("exchangeCodeForSession failed:", exchangeError);
+        return NextResponse.redirect(`${origin}/auth/auth-code-error`);
+      }
+
+      // Success — redirect to `next` on the same host the request arrived on (or forwarded host).
       const forwardedHost = request.headers.get("x-forwarded-host");
       const forwardedProto = request.headers.get("x-forwarded-proto") ?? "https";
       const isLocalEnv = process.env.NODE_ENV === "development";
@@ -29,6 +35,9 @@ export async function GET(request: Request) {
           : origin;
 
       return NextResponse.redirect(new URL(next, baseUrl).toString());
+    } catch (err) {
+      console.error("Auth callback handling error:", err);
+      return NextResponse.redirect(`${origin}/auth/auth-code-error`);
     }
   }
 
