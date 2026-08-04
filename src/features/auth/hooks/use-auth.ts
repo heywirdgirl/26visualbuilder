@@ -47,12 +47,17 @@ export function useAuth() {
     try {
       const redirectTo =
         typeof window !== "undefined"
-          ? `${window.location.origin}/auth/callback`
+          ? new URL("/auth/callback", process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin).toString()
           : undefined;
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: redirectTo ? { redirectTo } : undefined,
+        options: redirectTo
+          ? {
+              redirectTo,
+              flowType: "pkce",
+            }
+          : undefined,
       });
 
       if (error) throw error;
