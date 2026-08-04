@@ -7,6 +7,7 @@ import { TreeView } from "@/features/nodes-tree/components/tree-view";
 import { InspectorPanel } from "@/features/inspector/components/inspector-panel";
 import { PreviewWorkspace } from "@/features/canvas-preview/components/preview-workspace";
 import { CodeModal } from "@/features/code-generator/components/code-modal";
+import { ExportProjectButton } from "@/features/export-project/components/export-project-button";
 import { useTreeShortcuts } from "@/features/nodes-tree/hooks/use-tree-shortcuts";
 import { ExportImageButton } from "@/features/export-image/components/export-image-button";
 import { useBuilderStore } from "@/core/store/builder-store";
@@ -27,10 +28,11 @@ export default function Home() {
         >
           Scene Tree
         </button>
-          <div className="flex items-center gap-2 p-3 border-b pt-16">
-            <CodeModal />
-            <ExportImageButton />
-          </div>
+          <div className="flex items-center gap-2 p-3 border-b pt-16 flex-wrap">
+  <CodeModal />
+  <ExportImageButton />
+  <ExportProjectButton />
+</div>
           <TreeView />
         </aside>
       )}

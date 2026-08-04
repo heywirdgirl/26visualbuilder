@@ -3,11 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"npm:dev:next\" \"npm:dev:css\" ",
+    "dev": "npm run generate:ui-templates && concurrently \"npm:dev:next\" \"npm:dev:css\"",
     "dev:next": "next dev -H 127.0.0.1 --webpack",
     "dev:css": "tailwindcss -i ./src/app/globals.css -o ./public/preview.css --watch",
-    "build": "npm run build:css && next build",
+    "build": "npm run generate:ui-templates && npm run build:css && next build",
     "build:css": "tailwindcss -i ./src/app/globals.css -o ./public/preview.css --minify",
+    "generate:ui-templates": "node scripts/generate-ui-templates.mjs",
     "start": "next start",
     "lint": "eslint"
   },
@@ -19,6 +20,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "html-to-image": "^1.11.13",
+    "jszip": "^3.10.1",
     "lucide-react": "^1.21.0",
     "next": "16.2.9",
     "radix-ui": "^1.6.0",
