@@ -45,10 +45,18 @@ export function useAuth() {
     setIsSigningIn(true);
 
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
+      const redirectTo =
+  typeof window !== "undefined"
+    ? new URL(
+        "/auth/callback",
+        process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin
+      ).toString()
+    : undefined;
+
+const { error } = await supabase.auth.signInWithOAuth({
   provider: "google",
   options: {
-    redirectTo: `${window.location.origin}/auth/callback`,
+    redirectTo,
   },
 });
     } finally {
