@@ -45,32 +45,12 @@ export function useAuth() {
     setIsSigningIn(true);
 
     try {
-      const redirectTo =
-        typeof window !== "undefined"
-          ? (() => {
-              const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-              const currentOrigin = window.location.origin;
-              const preferredOrigin = configuredSiteUrl || currentOrigin;
-
-              if (preferredOrigin.includes("localhost") && !currentOrigin.includes("localhost")) {
-                return new URL("/auth/callback", currentOrigin).toString();
-              }
-
-              return new URL("/auth/callback", preferredOrigin).toString();
-            })()
-          : undefined;
-
       const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: redirectTo
-          ? {
-              redirectTo,
-              flowType: "pkce",
-            }
-          : undefined,
-      });
-
-      if (error) throw error;
+  provider: "google",
+  options: {
+    redirectTo: `${window.location.origin}/auth/callback`,
+  },
+});
     } finally {
       setIsSigningIn(false);
     }
