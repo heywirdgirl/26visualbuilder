@@ -10,6 +10,7 @@ import { CodeModal } from "@/features/code-generator/components/code-modal";
 import { ExportProjectButton } from "@/features/export-project/components/export-project-button";
 import { useTreeShortcuts } from "@/features/nodes-tree/hooks/use-tree-shortcuts";
 import { ExportImageButton } from "@/features/export-image/components/export-image-button";
+import { LoginButton } from "@/features/auth/components/login-button";
 import { useBuilderStore } from "@/core/store/builder-store";
 
 export default function Home() {
@@ -29,10 +30,11 @@ export default function Home() {
           Scene Tree
         </button>
           <div className="flex items-center gap-2 p-3 border-b pt-16 flex-wrap">
-  <CodeModal />
-  <ExportImageButton />
-  <ExportProjectButton />
-</div>
+            <CodeModal />
+            <ExportImageButton />
+            <ExportProjectButton />
+            <LoginButton />
+          </div>
           <TreeView />
         </aside>
       )}

@@ -20,6 +20,30 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Cấu trúc thư mục quan trọng trong src/
+
+Dưới đây là các thư mục chính và vai trò của chúng trong project:
+
+- `src/app/`: entry point của Next.js App Router, gồm layout, trang chính và các route như auth callback.
+- `src/components/ui/`: các component UI cơ bản được tái sử dụng, thường là wrapper cho shadcn/ui.
+- `src/core/`: tầng cốt lõi của app, bao gồm:
+  - `core/providers/`: providers cho ứng dụng như client provider.
+  - `core/registry/`: đăng ký các node/component hệ thống, quy tắc render và dependency UI.
+  - `core/store/`: store Zustand dùng để quản lý state builder.
+  - `core/supabase/`: client/server helper cho Supabase Auth và session.
+  - `core/types/`: các type TypeScript cho builder, node, style và file export.
+  - `core/utils/`: hàm tiện ích dùng chung như `cn`, style cascade và chuyển đổi style sang class.
+- `src/features/`: các feature chính của ứng dụng, chia theo module:
+  - `features/auth/`: auth hook và UI login/logout.
+  - `features/canvas-preview/`: preview và render component lên canvas.
+  - `features/code-generator/`: sinh code và modal xem code.
+  - `features/export-image/`: export ảnh từ preview.
+  - `features/export-project/`: export project thành file zip.
+  - `features/inspector/`: panel chỉnh sửa thuộc tính.
+  - `features/node-palette/`: bảng chọn node/component.
+  - `features/nodes-tree/`: cây node và thao tác trên tree.
+- `src/lib/`: các tiện ích bổ sung dùng chung cho app.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
