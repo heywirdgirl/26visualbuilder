@@ -1,60 +1,138 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
-branch sidebar
-## Getting Started
+# 26visualbuilder
 
-First, run the development server:
+`26visualbuilder` là một ứng dụng Next.js dạng tree-based UI builder MVP, cho phép người dùng xây dựng giao diện bằng cách kéo & thả node, xem trước trực tiếp, chỉnh sửa thuộc tính và xuất dự án thành mã nguồn hoặc ZIP.
+
+## Tổng quan
+
+Ứng dụng được thiết kế theo mô hình builder:
+
+- `App` và `Components` được tổ chức trong cây dự án.
+- Người dùng tạo trang, component và instance component trong cây.
+- Preview hiển thị UI runtime từ cấu trúc node hiện tại.
+- Inspector cho phép chỉnh layout, spacing, typography và appearance của node đang chọn.
+- Code generator sinh ra các file `app/page.tsx` và `components/*.tsx` dựa trên cấu trúc cây.
+- Export Project xuất ZIP gồm code nguồn và template UI cần thiết.
+- Hỗ trợ đăng nhập bằng Supabase OAuth (Google).
+
+## Kiến trúc chính
+
+### `src/app`
+
+- `layout.tsx`: thiết lập root layout của Next.js App Router, cấu hình font và provider chung.
+- `page.tsx`: entry page chính của builder, bao gồm tree view, preview workspace, inspector và các nút thao tác.
+- `auth/*`: route callback xử lý trả về OAuth với Supabase.
+
+### `src/core`
+
+`core` là nền tảng quản lý trạng thái, định nghĩa node và tích hợp Supabase.
+
+- `/providers/`: khai báo `ClientProvider` để tránh mismatch SSR/CSR và bọc các provider UI.
+- `registry/`: đăng ký loại node, quy tắc node và dependency UI.
+- `store/`: Zustand store `builder-store.ts` quản lý toàn bộ trạng thái cây, active node, chế độ edit, breakpoint và hành vi thêm/xóa/chuyển node.
+- `supabase/`: helper Supabase cho client/browser và server-side session sync.
+- `types/`: định nghĩa TypeScript cho node builder, file export và style.
+- `utils/`: utility chung như `cn`, cascade style, chuyển style sang class.
+
+### `src/features`
+
+Mỗi thư mục trong `features` là một module chức năng.
+
+- `auth/`: hook đăng nhập/đăng xuất bằng Supabase.
+- `canvas-preview/`: render workspace preview và quản lý ẩn/hiện sidebar.
+- `code-generator/`: sinh code JS/TSX từ cấu trúc node của builder.
+- `export-project/`: export dự án thành ZIP, thu thập template UI cần thiết và generated files.
+- `export-image/`: xuất ảnh từ preview.
+- `inspector/`: UI chỉnh sửa thuộc tính node, breakpoint và style.
+- `node-palette/`: bảng chọn node/component để thêm vào cây.
+- `nodes-tree/`: tree view chính, toolbar và thao tác với tree.
+
+### `src/components/ui`
+
+Chứa các component UI reuse được dùng toàn app, gồm các wrapper và primitives cho Radix/shadcn.
+
+> Không liệt kê chi tiết từng component ở đây vì thư mục này chủ yếu chứa các thành phần UI chung.
+
+### `src/lib`
+
+Các tiện ích hỗ trợ riêng dùng chung cho toàn app.
+
+## Chạy dự án
+
+Sử dụng `pnpm` hoặc `npm`.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Hoặc nếu dùng npm:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Trang dev mặc định:
 
-## Cấu trúc thư mục quan trọng trong src/
+- http://localhost:3000
 
-Dưới đây là các thư mục chính và vai trò của chúng trong project:
+## Scripts
 
-- `src/app/`: entry point của Next.js App Router, gồm layout, trang chính và các route như auth callback.
-- `src/components/ui/`: các component UI cơ bản được tái sử dụng, thường là wrapper cho shadcn/ui.
-- `src/core/`: tầng cốt lõi của app, bao gồm:
-  - `core/providers/`: providers cho ứng dụng như client provider.
-  - `core/registry/`: đăng ký các node/component hệ thống, quy tắc render và dependency UI.
-  - `core/store/`: store Zustand dùng để quản lý state builder.
-  - `core/supabase/`: client/server helper cho Supabase Auth và session.
-  - `core/types/`: các type TypeScript cho builder, node, style và file export.
-  - `core/utils/`: hàm tiện ích dùng chung như `cn`, style cascade và chuyển đổi style sang class.
-- `src/features/`: các feature chính của ứng dụng, chia theo module:
-  - `features/auth/`: auth hook và UI login/logout.
-  - `features/canvas-preview/`: preview và render component lên canvas.
-  - `features/code-generator/`: sinh code và modal xem code.
-  - `features/export-image/`: export ảnh từ preview.
-  - `features/export-project/`: export project thành file zip.
-  - `features/inspector/`: panel chỉnh sửa thuộc tính.
-  - `features/node-palette/`: bảng chọn node/component.
-  - `features/nodes-tree/`: cây node và thao tác trên tree.
-- `src/lib/`: các tiện ích bổ sung dùng chung cho app.
+- `pnpm dev`: chạy `generate:ui-templates`, sau đó chạy Next.js và Tailwind CSS watcher đồng thời.
+- `pnpm build`: tạo templates UI, build CSS và build Next.js.
+- `pnpm lint`: chạy ESLint.
+- `pnpm generate:ui-templates`: sinh `public/component-templates/ui-files.json` từ các file trong `src/components/ui`.
 
-## Learn More
+## Các thành phần quan trọng
 
-To learn more about Next.js, take a look at the following resources:
+### Builder store
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+`src/core/store/builder-store.ts` quản lý:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- cây node dự án với các folder `App` và `Components`.
+- thêm/xóa page, folder, component, component instance.
+- chuyển node, indent/outdent và cập nhật props/style.
+- active node/page và chế độ edit.
 
-## Deploy on Vercel
+### Export project
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+`src/features/code-generator/utils/export-project.ts`:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- quét cây để xác định page và component.
+- tạo file `app/.../page.tsx` và `components/...tsx` tương ứng.
+- xây dựng import path tự động cho các component.
+
+`src/features/export-project/hooks/use-export-project.ts`:
+
+- thu thập template dự án, generated files và required UI files.
+- tạo ZIP bằng `JSZip` và khởi tạo download.
+
+### Supabase
+
+Ứng dụng dùng Supabase để:
+
+- đăng nhập OAuth bằng Google.
+- đồng bộ session qua proxy middleware Next.js.
+- xử lý callback auth tại `src/app/auth/callback/route.ts`.
+
+Cấu hình Supabase được tách thành `src/core/supabase/client.ts`, `src/core/supabase/server.ts` và `src/core/supabase/proxy.ts`.
+
+## Cấu hình môi trường
+
+Tạo file `.env` hoặc cấu hình biến môi trường:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_SITE_URL` (nên thiết lập khi chạy ở production để redirect OAuth chính xác)
+
+## Triển khai
+
+- Dự án có cấu hình `netlify.toml` để deploy dưới dạng static Next.js build.
+- `build` command: `npm run build`
+- `publish`: `.next`
+
+## Notes
+
+- `scripts/generate-ui-templates.mjs` sinh manifest `public/component-templates/ui-files.json` từ file `src/components/ui/*.tsx`.
+- `src/proxy.ts` là middleware Next.js cho phép sync session Supabase với request.
+- Thiết kế nhắm tới MVP builder nên code hiện tại ưu tiên lodash tree structure, node registry và render runtime dựa trên dữ liệu.
