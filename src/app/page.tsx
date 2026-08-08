@@ -12,9 +12,37 @@ import { useTreeShortcuts } from "@/features/nodes-tree/hooks/use-tree-shortcuts
 import { ExportImageButton } from "@/features/export-image/components/export-image-button";
 import { LoginButton } from "@/features/auth/components/login-button";
 import { useBuilderStore } from "@/core/store/builder-store";
+import { useEffect } from "react";
+import { createClient } from "@/core/supabase/client";
 
 export default function Home() {
   useTreeShortcuts();
+
+  // Nếu Supabase redirect về trang chủ với ?code=..., cố gắng trao đổi code thành session
+  // và xóa query param để tránh việc refresh gây lỗi đổi code lại.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    if (!code) return;
+
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+        if (error) {
+          console.error("exchangeCodeForSession (client) failed:", error);
+        } else {
+          // Xóa query param `code` khỏi URL để tránh retry khi refresh
+          const newUrl = window.location.pathname + window.location.hash;
+          window.history.replaceState({}, document.title, newUrl);
+        }
+      } catch (err) {
+        console.error("Auth exchange error (client):", err);
+      }
+    })();
+  }, []);
 
   const menuHidden = useBuilderStore((s) => s.menuHidden);
   const toggleMenuHidden = useBuilderStore((s) => s.toggleMenuHidden);
