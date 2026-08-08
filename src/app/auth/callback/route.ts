@@ -3,43 +3,43 @@
 import { createClient } from "@/core/supabase/server";
 import { NextResponse } from "next/server";
 
-// BẮT BUỘC: Ép Next.js không được cache file này dưới dạng static HTML
-export const dynamic = "force-dynamic";
-
 export async function GET(request: Request) {
-  const requestUrl = new URL(request.url);
-  const code = requestUrl.searchParams.get("code");
-  const next = requestUrl.searchParams.get("next") ?? "/";
-  const error = requestUrl.searchParams.get("error");
+  const { searchParams, origin } = new URL(request.url);
+  const code = searchParams.get("code");
+  const next = searchParams.get("next") ?? "/";
+  const error = searchParams.get("error");
 
-  // Nếu Google/Supabase trả về lỗi OAuth
   if (error) {
-    console.error("OAuth Error:", error);
-    return NextResponse.redirect(`${requestUrl.origin}/auth/auth-code-error`);
+    return NextResponse.redirect(`${origin}/auth/auth-code-error`);
   }
 
   if (code) {
-    const supabase = await createClient();
-    const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+    try {
+      const supabase = await createClient();
+      const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
 
-    if (!exchangeError) {
-      // Đổi code thành công -> Redirect về trang chủ (hoặc 'next')
-      // Lệnh này sẽ tự động loại bỏ tham số ?code=... trên thanh địa chỉ
-      const forwardedHost = request.headers.get("x-forwarded-host");
-      const isLocal = process.env.NODE_ENV === "development";
-
-      if (isLocal) {
-        return NextResponse.redirect(`${requestUrl.origin}${next}`);
-      } else if (forwardedHost) {
-        return NextResponse.redirect(`https://${forwardedHost}${next}`);
-      } else {
-        return NextResponse.redirect(`${requestUrl.origin}${next}`);
+      if (exchangeError) {
+        console.error("exchangeCodeForSession failed:", exchangeError);
+        return NextResponse.redirect(`${origin}/auth/auth-code-error`);
       }
-    } else {
-      console.error("Exchange Code Error:", exchangeError);
+
+      // Success — redirect to `next` on the same host the request arrived on (or forwarded host).
+      const forwardedHost = request.headers.get("x-forwarded-host");
+      const forwardedProto = request.headers.get("x-forwarded-proto") ?? "https";
+      const isLocalEnv = process.env.NODE_ENV === "development";
+
+      const baseUrl = isLocalEnv
+        ? origin
+        : forwardedHost
+          ? `${forwardedProto}://${forwardedHost}`
+          : origin;
+
+      return NextResponse.redirect(new URL(next, baseUrl).toString());
+    } catch (err) {
+      console.error("Auth callback handling error:", err);
+      return NextResponse.redirect(`${origin}/auth/auth-code-error`);
     }
   }
 
-  // Nếu không có code hoặc đổi code thất bại
-  return NextResponse.redirect(`${requestUrl.origin}/auth/auth-code-error`);
+  return NextResponse.redirect(`${origin}/auth/auth-code-error`);
 }

@@ -4,18 +4,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/core/supabase/client";
 
 const getURL = () => {
-  let url =
-    process.env.NEXT_PUBLIC_SITE_URL ??
-    process.env.NEXT_PUBLIC_VERCEL_URL ??
-    "http://localhost:3000/";
-
+  let url = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000/";
   url = url.endsWith("/") ? url : `${url}/`;
-  url = url.startsWith("http") ? url : `https://${url}`;
   return url;
 };
 
@@ -24,63 +18,66 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
-  const router = useRouter();
 
   useEffect(() => {
+    let mounted = true;
     const supabase = createClient();
 
-    // 1. Lấy thông tin user hiện tại khi trang load
-    const getUser = async () => {
+    const initializeAuth = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
+
+        if (!mounted) return;
+
+        if (error) {
+          console.error("Lỗi lấy session:", error);
+        }
+
         setUser(session?.user ?? null);
-      } catch (err) {
-        console.error("Error fetching session:", err);
+      } catch (error) {
+        console.error("Lỗi khởi tạo auth:", error);
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
 
-    getUser();
+    void initializeAuth();
 
-    // 2. LẮNG NGHE SỰ KIỆN DỰ ÁN THỜI GIAN THỰC (CẬP NHẬT LOGO NGAY LẬP TỨC)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+
       setUser(session?.user ?? null);
       setLoading(false);
-
-      // Khi phát hiện đăng nhập thành công hoặc đổi token -> Làm mới UI lập tức
-      if (event === "SIGNED_IN" || event === "USER_UPDATED" || event === "TOKEN_REFRESHED") {
-        router.refresh();
-      }
-      if (event === "SIGNED_OUT") {
-        setUser(null);
-        router.refresh();
-      }
     });
 
     return () => {
+      mounted = false;
       subscription.unsubscribe();
     };
-  }, [router]);
+  }, []);
 
   const signInWithGoogle = useCallback(async () => {
     const supabase = createClient();
     setIsSigningIn(true);
+
     try {
-      const redirectUrl = `${getURL()}auth/callback`;
-      const { error } = await supabase.auth.signInWithOAuth({
+      await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: redirectUrl,
-          queryParams: {
-            access_type: "offline",
-            prompt: "consent",
-          },
+          redirectTo: `${getURL()}auth/callback`,
         },
       });
-      if (error) throw error;
     } catch (error) {
-      console.error("Error signing in with Google:", error);
+      console.error("Lỗi đăng nhập Google:", error);
+      setLoading(false);
+    } finally {
       setIsSigningIn(false);
     }
   }, []);
@@ -88,16 +85,17 @@ export function useAuth() {
   const signOut = useCallback(async () => {
     const supabase = createClient();
     setIsSigningOut(true);
+
     try {
       await supabase.auth.signOut();
       setUser(null);
-      router.refresh();
+      setLoading(false);
     } catch (error) {
-      console.error("Error signing out:", error);
+      console.error("Lỗi đăng xuất:", error);
     } finally {
       setIsSigningOut(false);
     }
-  }, [router]);
+  }, []);
 
   return {
     user,
