@@ -1,87 +1,71 @@
 // features/auth/hooks/use-auth.tsx
-
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/core/supabase/client";
 
-export function useAuth() {
+// Hàm helper để lấy URL chính xác dựa trên biến môi trường
+const getURL = () => {
+  let url = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000/';
+  // Đảm bảo có dấu '/' ở cuối
+  url = url.endsWith('/') ? url : `${url}/`;
+  return url;
+};
+
+export function useAuth() { 
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [isSigningIn, setIsSigningIn] = useState(false);
-  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [loading, setLoading] = useState(true); 
+  const [isSigningIn, setIsSigningIn] = useState(false); 
+  const [isSigningOut, setIsSigningOut] = useState(false); 
 
-  useEffect(() => {
-    let mounted = true;
+  useEffect(() => { 
+    let mounted = true; 
     const supabase = createClient();
+    
+    // Thêm logic lấy session của bạn ở đây nếu cần...
+    
+  }, []); 
 
-    const syncSession = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!mounted) return;
-      setUser(session?.user ?? null);
-      setLoading(false);
-    };
-
-    void syncSession();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!mounted) return;
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  const signInWithGoogle = useCallback(async () => {
-    const supabase = createClient();
-    setIsSigningIn(true);
+  const signInWithGoogle = useCallback(async () => { 
+    const supabase = createClient(); 
+    setIsSigningIn(true); 
 
     try {
-      const redirectTo =
-        typeof window !== "undefined"
-          ? new URL("/auth/callback", window.location.origin).toString()
-          : undefined;
-
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
+      await supabase.auth.signInWithOAuth({
+        provider: 'google',
         options: {
-          redirectTo,
+          // Sử dụng hàm getURL() thay vì window.location.origin
+          redirectTo: `${getURL()}auth/callback`,
         },
       });
-      if (error) console.error("signInWithOAuth thất bại:", error);
+    } catch (error) {
+      console.error("Lỗi đăng nhập Google:", error);
     } finally {
       setIsSigningIn(false);
     }
-  }, []);
+  }, []); 
 
-  const signOut = useCallback(async () => {
-    const supabase = createClient();
-    setIsSigningOut(true);
-
+  const signOut = useCallback(async () => { 
+    const supabase = createClient(); 
+    setIsSigningOut(true); 
+    
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      await supabase.auth.signOut();
+      setUser(null);
+    } catch (error) {
+      console.error("Lỗi đăng xuất:", error);
     } finally {
       setIsSigningOut(false);
     }
-  }, []);
+  }, []); 
 
   return {
-    user,
-    loading,
-    isSigningIn,
-    isSigningOut,
-    signInWithGoogle,
-    signOut,
-  };
+    user, 
+    loading, 
+    isSigningIn, 
+    isSigningOut, 
+    signInWithGoogle, 
+    signOut, 
+  }; 
 }
