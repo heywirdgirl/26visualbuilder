@@ -3,36 +3,43 @@
 import { createClient } from "@/core/supabase/server";
 import { NextResponse } from "next/server";
 
-// BẮT BUỘC TRÊN NETLIFY: Không cache API này
+// BẮT BUỘC: Ép Next.js không được cache file này dưới dạng static HTML
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get("code");
-  // Nếu có tham số next thì lấy, không thì mặc định về trang chủ
-  const next = searchParams.get("next") ?? "/"; 
-  const error = searchParams.get("error");
+  const requestUrl = new URL(request.url);
+  const code = requestUrl.searchParams.get("code");
+  const next = requestUrl.searchParams.get("next") ?? "/";
+  const error = requestUrl.searchParams.get("error");
 
-  // Xử lý nếu Google trả về lỗi ngay từ đầu
+  // Nếu Google/Supabase trả về lỗi OAuth
   if (error) {
-    return NextResponse.redirect(`${origin}/auth/auth-code-error`);
+    console.error("OAuth Error:", error);
+    return NextResponse.redirect(`${requestUrl.origin}/auth/auth-code-error`);
   }
 
-  // Đổi code lấy phiên đăng nhập (Session)
   if (code) {
     const supabase = await createClient();
     const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!exchangeError) {
-      // THÀNH CÔNG: Chuyển hướng người dùng về trang chủ (hoặc trang next)
-      return NextResponse.redirect(`${origin}${next}`);
+      // Đổi code thành công -> Redirect về trang chủ (hoặc 'next')
+      // Lệnh này sẽ tự động loại bỏ tham số ?code=... trên thanh địa chỉ
+      const forwardedHost = request.headers.get("x-forwarded-host");
+      const isLocal = process.env.NODE_ENV === "development";
+
+      if (isLocal) {
+        return NextResponse.redirect(`${requestUrl.origin}${next}`);
+      } else if (forwardedHost) {
+        return NextResponse.redirect(`https://${forwardedHost}${next}`);
+      } else {
+        return NextResponse.redirect(`${requestUrl.origin}${next}`);
+      }
     } else {
-      // THẤT BẠI: Báo lỗi
-      console.error("Lỗi xác thực Supabase:", exchangeError.message);
-      return NextResponse.redirect(`${origin}/auth/auth-code-error`);
+      console.error("Exchange Code Error:", exchangeError);
     }
   }
 
-  // Nếu truy cập link không có code cũng không có error -> Đá về trang chủ
-  return NextResponse.redirect(origin);
+  // Nếu không có code hoặc đổi code thất bại
+  return NextResponse.redirect(`${requestUrl.origin}/auth/auth-code-error`);
 }
