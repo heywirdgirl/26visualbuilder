@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "npm run generate:ui-templates && concurrently \"npm:dev:next\" \"npm:dev:css\"",
-    "dev:next": "next dev -H 127.0.0.1 --webpack",
+    "dev:next": "next dev -H localhost --webpack",
     "dev:css": "tailwindcss -i ./src/app/globals.css -o ./public/preview.css --watch",
     "build": "npm run generate:ui-templates && npm run build:css && next build",
     "build:css": "tailwindcss -i ./src/app/globals.css -o ./public/preview.css --minify",
