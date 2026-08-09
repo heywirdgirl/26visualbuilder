@@ -8,7 +8,7 @@ import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/core/supabase/client";
 
 const getURL = () => {
-  let url = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000/";
+  let url = process.env.NEXT_PUBLIC_SITE_URL ?? "https://26visualbuilder.netlify.app/";
   url = url.endsWith("/") ? url : `${url}/`;
   return url;
 };
@@ -66,12 +66,16 @@ export function useAuth() {
   const signInWithGoogle = useCallback(async () => {
     const supabase = createClient();
     setIsSigningIn(true);
+    
+    const redirectTo = `${getURL()}auth/callback`;
+
+    console.log("OAuth redirectTo =", redirectTo);
 
     try {
       await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${getURL()}auth/callback`,
+          redirectTo,
         },
       });
     } catch (error) {
