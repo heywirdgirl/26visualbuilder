@@ -7,6 +7,7 @@ import { getNodeDefinition } from "@/core/registry/node-registry";
 import { canContain } from "@/core/registry/node-rules";
 import { SYSTEM_NODE_IDS } from "@/core/registry/system-nodes";
 import { useMemo } from "react";
+import type { User } from "@supabase/supabase-js";
 // ID cố định cho 2 folder gốc + trang Home mặc định — Phase 3/4/5 dùng lại để
 // biết "đây là cấu trúc hệ thống, không cho xoá", không tính lại bằng string rời rạc.
 export const APP_FOLDER_ID = "app-folder";
@@ -26,6 +27,10 @@ interface BuilderState {
   previewContainerEl: HTMLElement | null;
   setPreviewContainerEl: (el: HTMLElement | null) => void;
   activeBreakpoint: Breakpoint;
+  user: User | null;
+  authLoading: boolean;
+  setUser: (user: User | null) => void;
+  setAuthLoading: (loading: boolean) => void;
   setActiveBreakpoint: (bp: Breakpoint) => void;
   clearNodeStyleOverride: (id: string, breakpoint: Breakpoint, key: keyof StyleProps) => void;
 
@@ -166,6 +171,8 @@ tree: {
   activeBreakpoint: "base",
   highlightReferenceId: null,
   previewContainerEl: null,
+  user: null,
+  authLoading: true,
 
   setActiveNode: (id) => set({ activeNodeId: id }),
   setActivePage: (id) => set({ activePageId: id }),
@@ -444,7 +451,8 @@ tree: {
   toggleEditMode: () => set((state) => ({ editMode: !state.editMode })),
   setHighlightReferenceId: (id) => set({ highlightReferenceId: id }),
   setPreviewContainerEl: (el) => set({ previewContainerEl: el }),
-
+setUser: (user) => set({ user }),
+  setAuthLoading: (authLoading) => set({ authLoading }),
   
 }));
 
