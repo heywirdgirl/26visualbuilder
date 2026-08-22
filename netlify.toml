@@ -1,4 +1,23 @@
-
-
+# netlify.toml
 [build]
   command = "npm run build"
+  functions = "netlify/functions"
+  publish = ".next"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+# ⭐ QUAN TRỌNG: Thêm rule này TRƯỚC catch-all
+[[redirects]]
+  from = "/auth/*"
+  to = "/auth/:splat"
+  status = 200
+
+# Catch-all phải ở cuối và chỉ cho client routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  conditions = { Role = ["role=visitor"] }
