@@ -1,28 +1,10 @@
-import type { OpenNextConfig } from "@opennextjs/aws/types/open-next.js";
+import { updateSession } from "@/core/supabase/proxy";
+import { type NextRequest } from "next/server";
 
-const config = {
-  default: {
-    override: {
-      wrapper: "cloudflare-node",
-      converter: "edge",
-      proxyExternalRequest: "fetch",
-      incrementalCache: "dummy",
-      tagCache: "dummy",
-      queue: "dummy",
-    },
-  },
-  edgeExternals: ["node:crypto"],
-  middleware: {
-    external: true,
-    override: {
-      wrapper: "cloudflare-edge",
-      converter: "edge",
-      proxyExternalRequest: "fetch",
-      incrementalCache: "dummy",
-      tagCache: "dummy",
-      queue: "dummy",
-    },
-  },
-} satisfies OpenNextConfig;
+export async function middleware(request: NextRequest) {
+  return updateSession(request);
+}
 
-export default config;
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+};
