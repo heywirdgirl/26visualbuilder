@@ -6,6 +6,7 @@
     "dev": "npm run generate:ui-templates && concurrently \"npm:dev:next\" \"npm:dev:css\"",
     "dev:next": "next dev -H localhost --webpack",
     "dev:css": "tailwindcss -i ./src/app/globals.css -o ./public/preview.css --watch",
+    "pages:build": "npx @cloudflare/next-on-pages"
     "build": "npm run generate:ui-templates && npm run build:css && next build",
     "build:css": "tailwindcss -i ./src/app/globals.css -o ./public/preview.css --minify",
     "generate:ui-templates": "node scripts/generate-ui-templates.mjs",
@@ -34,6 +35,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@cloudflare/next-on-pages": "^1.13.16",
     "@netlify/plugin-nextjs": "^5.15.13",
     "@tailwindcss/cli": "^4.3.2",
     "@tailwindcss/postcss": "^4",
