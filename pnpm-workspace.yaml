@@ -1,6 +1,0 @@
-allowBuilds:
-  '@parcel/watcher': true
-  esbuild: false
-  sharp: false
-  unrs-resolver: false
-  workerd: false
