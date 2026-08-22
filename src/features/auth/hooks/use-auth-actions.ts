@@ -16,15 +16,10 @@ export function useAuthActions() {
     try {
       const supabase = createClient();
       
-      // 🔍 Debug: Log actual origin
-      console.log("[auth] Current origin:", window.location.origin);
-      
       const redirectTo = new URL(
         "/auth/callback", 
         window.location.origin
       ).toString();
-      
-      console.log("[auth] Redirect URL:", redirectTo); // ⭐ Quan trọng!
 
       const { error: authError } = await supabase.auth.signInWithOAuth({
         provider: "google",
