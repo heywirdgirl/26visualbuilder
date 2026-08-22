@@ -1,5 +1,7 @@
 # 26visualbuilder
 
+test vercel
+
 `26visualbuilder` là một ứng dụng Next.js dạng tree-based UI builder MVP, cho phép người dùng xây dựng giao diện bằng cách kéo & thả node, xem trước trực tiếp, chỉnh sửa thuộc tính và xuất dự án thành mã nguồn hoặc ZIP.
 
 ## Tổng quan
