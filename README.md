@@ -129,9 +129,45 @@ Tạo file `.env` hoặc cấu hình biến môi trường:
 
 ## Triển khai
 
-- Dự án có cấu hình `netlify.toml` để deploy dưới dạng static Next.js build.
-- `build` command: `npm run build`
-- `publish`: `.next`
+Dự án chạy trên **Cloudflare Workers** thông qua `@opennextjs/cloudflare`. Không dùng cấu hình Cloudflare Pages static, vì ứng dụng có middleware, Supabase auth và Route Handler.
+
+### Deploy bằng Cloudflare Workers Builds
+
+1. Push repository lên GitHub và chọn **Workers & Pages → Create application → Workers → Import a repository**.
+2. Chọn branch production (`master` hiện tại).
+3. Đặt build command:
+
+	```bash
+	pnpm install --frozen-lockfile && pnpm run build:cloudflare
+	```
+
+4. Đặt deploy command:
+
+	```bash
+	pnpm exec wrangler deploy
+	```
+
+5. Cấu hình các biến `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_URL` và `NEXT_PUBLIC_SUPABASE_ANON_KEY` trong cả build environment và production environment.
+6. Trong Supabase Dashboard, thêm callback URL:
+
+	```text
+	https://<worker-domain>/auth/callback
+	```
+
+Cloudflare Builds sẽ tự deploy sau mỗi lần push. Cấu hình Worker và static assets vẫn được quản lý trong [wrangler.jsonc](wrangler.jsonc).
+
+### Deploy bằng CLI
+
+```bash
+pnpm install --frozen-lockfile
+pnpm run deploy
+```
+
+Kiểm tra production build trước khi deploy:
+
+```bash
+pnpm run preview
+```
 
 ## Notes
 
