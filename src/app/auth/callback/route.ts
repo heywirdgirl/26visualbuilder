@@ -1,5 +1,7 @@
 // src/app/auth/callback/route.ts
 
+export const runtime = 'edge';
+
 import { createClient } from "@/core/supabase/server";
 import { NextResponse } from "next/server";
 

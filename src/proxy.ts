@@ -1,5 +1,7 @@
 // src/proxy.ts
 
+export const runtime = 'edge';
+
 import { updateSession } from "@/core/supabase/proxy";
 import { type NextRequest } from "next/server";
 
