@@ -8,9 +8,9 @@
     "dev:css": "tailwindcss -i ./src/app/globals.css -o ./public/preview.css --watch",
     "build": "npm run generate:ui-templates && npm run build:css && next build",
     "build:css": "tailwindcss -i ./src/app/globals.css -o ./public/preview.css --minify",
-    "build:cf": "npx @opennextjs/cloudflare build",
-    "preview": "npm run build && npm run build:cf && wrangler dev",
-    "deploy": "npm run build && npm run build:cf && wrangler deploy",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "generate:ui-templates": "node scripts/generate-ui-templates.mjs",
     "start": "next start",
     "lint": "eslint"
