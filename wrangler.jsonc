@@ -8,6 +8,11 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  "vars": {
+    "NEXT_PUBLIC_SITE_URL": "26visualbuilder.awsmydream.workers.dev",
+    "NEXT_PUBLIC_SUPABASE_URL": "https://yvgcoiajenurqhctirwp.supabase.co",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2Z2NvaWFqZW51cnFoY3RpcndwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU4Mzc0MTIsImV4cCI6MjEwMTQxMzQxMn0.S_VQrYDbU2zocPxKIkvkPHIfAeR-6dFb-mhOnA4qFvc"
+  },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1,
