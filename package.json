@@ -4,10 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "npm run generate:ui-templates && concurrently \"npm:dev:next\" \"npm:dev:css\"",
-    "dev:next": "next dev -H 127.0.0.1 --webpack",
+    "dev:next": "next dev -H localhost --webpack",
     "dev:css": "tailwindcss -i ./src/app/globals.css -o ./public/preview.css --watch",
     "build": "npm run generate:ui-templates && npm run build:css && next build",
     "build:css": "tailwindcss -i ./src/app/globals.css -o ./public/preview.css --minify",
+    "build:cloudflare": "pnpm run generate:ui-templates && pnpm run build:css && opennextjs-cloudflare build",
+    "preview": "pnpm run build:cloudflare && opennextjs-cloudflare preview",
+    "deploy": "pnpm run build:cloudflare && opennextjs-cloudflare deploy",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "generate:ui-templates": "node scripts/generate-ui-templates.mjs",
     "start": "next start",
     "lint": "eslint"
@@ -34,6 +38,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "^1.20.2",
     "@tailwindcss/cli": "^4.3.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
@@ -43,6 +48,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.125.0"
   }
 }

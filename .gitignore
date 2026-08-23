@@ -17,8 +17,13 @@
 /.next/
 /out/
 
+# netlify
+/.netlify/
+
 # production
 /build
+/.open-next/
+/.wrangler/
 
 # misc
 .DS_Store
