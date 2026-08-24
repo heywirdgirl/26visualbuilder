@@ -13,6 +13,9 @@
     "deploy": "pnpm run build:cloudflare && opennextjs-cloudflare deploy",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "generate:ui-templates": "node scripts/generate-ui-templates.mjs",
+    "supabase": "supabase",
+    "db:push": "supabase db push",
+    "db:reset": "supabase db reset",
     "start": "next start",
     "lint": "eslint"
   },

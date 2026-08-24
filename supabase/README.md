@@ -8,9 +8,28 @@ initial_schema.sql# Supabase setup
    NEXT_PUBLIC_SITE_URL=http://localhost:3000
    ```
 
-2. Apply `migrations/20260824000000_initial_schema.sql` in the Supabase SQL Editor, or run it through the Supabase CLI after linking this project.
+2. From the repository root, install dependencies and log in to the Supabase CLI:
 
-3. In Supabase Authentication, enable Google and add these redirect URLs:
+   ```bash
+   pnpm install
+   pnpm supabase login
+   ```
+
+3. Link this repository to your existing Supabase project. Replace `your-project-ref` with the ref from the project URL:
+
+   ```bash
+   pnpm supabase link --project-ref your-project-ref
+   ```
+
+4. Push the migration from `migrations/20260824000000_initial_schema.sql`:
+
+   ```bash
+   pnpm db:push
+   ```
+
+   After this, edit SQL files in VS Code and run `pnpm db:push` again. The CLI tracks applied migrations, so do not edit a migration that has already been pushed; create a new timestamped file instead.
+
+5. In Supabase Authentication, enable Google and add these redirect URLs:
 
    ```text
    http://localhost:3000/auth/callback
