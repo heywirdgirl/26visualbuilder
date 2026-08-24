@@ -29,6 +29,8 @@ interface BuilderState {
   activeBreakpoint: Breakpoint;
   user: User | null;
   authLoading: boolean;
+  currentProjectId: string | null;
+  setCurrentProjectId: (id: string | null) => void;
   setUser: (user: User | null) => void;
   setAuthLoading: (loading: boolean) => void;
   setActiveBreakpoint: (bp: Breakpoint) => void;
@@ -173,6 +175,7 @@ tree: {
   previewContainerEl: null,
   user: null,
   authLoading: true,
+  currentProjectId: null,
 
   setActiveNode: (id) => set({ activeNodeId: id }),
   setActivePage: (id) => set({ activePageId: id }),
@@ -453,7 +456,7 @@ tree: {
   setPreviewContainerEl: (el) => set({ previewContainerEl: el }),
 setUser: (user) => set({ user }),
   setAuthLoading: (authLoading) => set({ authLoading }),
-  
+  setCurrentProjectId: (id) => set({ currentProjectId: id }),
 }));
 
 export function useActiveNode() {

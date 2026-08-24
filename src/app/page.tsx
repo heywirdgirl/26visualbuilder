@@ -3,6 +3,7 @@
 
 "use client";
 
+import { SaveProjectButton } from "@/features/cloud-save/components/save-project-button";
 import { TreeView } from "@/features/nodes-tree/components/tree-view";
 import { InspectorPanel } from "@/features/inspector/components/inspector-panel";
 import { PreviewWorkspace } from "@/features/canvas-preview/components/preview-workspace";
@@ -62,6 +63,8 @@ export default function Home() {
             <ExportImageButton />
             <ExportProjectButton />
             <LoginButton />
+            
+            <SaveProjectButton />
           </div>
           <TreeView />
         </aside>
