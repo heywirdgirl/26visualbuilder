@@ -2,7 +2,7 @@ name: Supabase Migration
 
 on:
   push:
-    branches: [ master ]
+    branches: [ migration ]
     paths:
       - 'supabase/migrations/**'  # Chỉ kích hoạt khi có thay đổi ở đây
 
@@ -21,5 +21,5 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
-          supabase link --project-ref fpnlxkexqvaoaxrktori
+          supabase link --project-ref yvgcoiajenurqhctirwp
           supabase db push
