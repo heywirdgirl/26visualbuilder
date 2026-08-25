@@ -1,7 +1,7 @@
 -- Migration #2: chuyển "publish" từ cờ is_public trong projects (riêng tư, sửa được)
 -- sang bảng posts riêng (công khai, bất biến sau khi đăng) — đúng kiến trúc đã chốt:
 -- editor/projects là private workspace, posts là social feed, publish là hành động 1 lần.
-
+-- migration 02
 drop table if exists public.project_likes;
 
 create table public.posts (
