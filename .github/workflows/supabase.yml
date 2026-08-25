@@ -2,7 +2,7 @@ name: Supabase Migration
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master,migration ]
     paths:
       - 'supabase/migrations/**'  # Chỉ kích hoạt khi có thay đổi ở đây
 
