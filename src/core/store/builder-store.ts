@@ -31,6 +31,7 @@ interface BuilderState {
   authLoading: boolean;
   currentProjectId: string | null;
   setCurrentProjectId: (id: string | null) => void;
+  loadProjectTree: (tree: TreeNode, projectId: string) => void;
   setUser: (user: User | null) => void;
   setAuthLoading: (loading: boolean) => void;
   setActiveBreakpoint: (bp: Breakpoint) => void;
@@ -134,38 +135,43 @@ function findFirstPageId(tree: TreeNode): string | null {
   return null;
 }
 
+
+export function createDefaultProjectTree(): TreeNode {
+  return {
+    id: "root",
+    type: SYSTEM_NODE_IDS.folder,
+    props: { name: "Project" },
+    style: { base: {} },
+    children: [
+      {
+        id: APP_FOLDER_ID,
+        type: SYSTEM_NODE_IDS.folder,
+        props: { name: "App" },
+        style: { base: {} },
+        children: [
+          {
+            id: HOME_PAGE_ID,
+            type: SYSTEM_NODE_IDS.page,
+            props: { name: "Home", slug: "" },
+            style: { base: { direction: "flex-col", gap: 4, padding: 4 } },
+            children: [],
+          },
+        ],
+      },
+      {
+        id: COMPONENTS_FOLDER_ID,
+        type: SYSTEM_NODE_IDS.folder,
+        props: { name: "Components" },
+        style: { base: {} },
+        children: [],
+      },
+    ],
+  };
+}
+
 export const useBuilderStore = create<BuilderState>((set) => ({
   // 1. Default tree init — Project/App/Components/Home
-tree: {
-  id: "root",
-  type: SYSTEM_NODE_IDS.folder,
-  props: { name: "Project" },
-  style: { base: {} }, // 👈 thêm
-  children: [
-    {
-      id: APP_FOLDER_ID,
-      type: SYSTEM_NODE_IDS.folder,
-      props: { name: "App" },
-      style: { base: {} }, // 👈 thêm
-      children: [
-        {
-          id: HOME_PAGE_ID,
-          type: SYSTEM_NODE_IDS.page,
-          props: { name: "Home", slug: "" }, // 👈 bỏ direction/gap/padding
-          style: { base: { direction: "flex-col", gap: 4, padding: 4 } }, // 👈 thêm
-          children: [],
-        },
-      ],
-    },
-    {
-      id: COMPONENTS_FOLDER_ID,
-      type: SYSTEM_NODE_IDS.folder,
-      props: { name: "Components" },
-      style: { base: {} }, // 👈 thêm
-      children: [],
-    },
-  ],
-},
+tree: createDefaultProjectTree(),
   activeNodeId: null,
   activePageId: HOME_PAGE_ID,
   menuHidden: false,
@@ -457,8 +463,18 @@ tree: {
 setUser: (user) => set({ user }),
   setAuthLoading: (authLoading) => set({ authLoading }),
   setCurrentProjectId: (id) => set({ currentProjectId: id }),
-}));
+  loadProjectTree: (tree, projectId) =>
+    set({
+      tree,
+      currentProjectId: projectId,
+      activeNodeId: null,
+      activePageId: findFirstPageId(tree), // tự tìm Page đầu tiên trong cây vừa nạp — hàm này đã có sẵn từ V1.9
+      editMode: false,
+    }),
 
+  
+}));
+  
 export function useActiveNode() {
   return useBuilderStore((s) => (s.activeNodeId ? findNode(s.tree, s.activeNodeId) : null));
 }
