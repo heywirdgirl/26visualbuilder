@@ -6,7 +6,7 @@
 ```jsonc
 {
   "r2_buckets": [
-    { "binding": "THUMBNAILS_BUCKET", "bucket_name": "my-social-app" }
+    { "binding": "THUMBNAILS_BUCKET", "bucket_name": "26visualbuilder" }
   ]
 }
 ```
@@ -14,7 +14,7 @@
 3. Xác nhận `next.config.ts` đã gọi `initOpenNextCloudflareForDev()` — bắt buộc để `next dev` local giả lập được binding, nếu thiếu bước migrate hosting trước đó bỏ sót dòng này thì bindings sẽ `undefined` khi chạy dev.
 4. **Bucket Settings → Public Access** vẫn giữ nguyên như đã làm (r2.dev subdomain hoặc Custom Domain) — R2 binding chỉ thay cách **ghi** (server-side write), không thay cách **đọc công khai** ảnh (vẫn qua URL public như cũ).
 
-Không cần bước "Create API Token" / CORS Policy nữa — bỏ qua hoàn toàn 2 mục đó so với checklist cũ.
+
 
 ## File mới: `core/r2/env.ts` — đơn giản hơn hẳn bản cũ
 
@@ -27,12 +27,6 @@ function requireEnv(name: string): string {
   return value;
 }
 
-// Chỉ còn 1 biến — không cần Account ID/Access Key/Secret nào nữa vì dùng Binding,
-// không qua API S3-compatible ký chữ ký thủ công như phương án Netlify cũ.
-export function getR2PublicUrl(): string {
-  return requireEnv("NEXT_PUBLIC_R2_PUBLIC_URL");
-}
-```
 
 ## File mới: `src/app/api/upload-thumbnail/route.ts`
 
