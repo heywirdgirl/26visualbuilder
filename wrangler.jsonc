@@ -8,7 +8,9 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
-  
+  "r2_buckets": [
+    { "binding": "THUMBNAILS_BUCKET", "bucket_name": "my-social-app" }
+  ],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1,
