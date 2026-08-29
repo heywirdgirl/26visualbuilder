@@ -2,6 +2,12 @@
 
 import { useState } from "react";
 
+interface UploadResponse {
+  success?: boolean;
+  error?: string;
+  publicUrl?: string;
+}
+
 export function useUploadImage() {
   const [isUploading, setIsUploading] = useState(false);
 
@@ -14,7 +20,7 @@ export function useUploadImage() {
       // Gửi thẳng tới route handler của chính app — cùng domain, không có bước
       // "xin presigned URL" riêng như phương án cũ, ít 1 vòng round-trip.
       const res = await fetch("/api/upload-thumbnail", { method: "POST", body: formData });
-      const data = await res.json();
+      const data = (await res.json()) as UploadResponse;
 
       if (!res.ok || !data.success) {
         window.alert(data.error ?? "Upload thất bại.");
