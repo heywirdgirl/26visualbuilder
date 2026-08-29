@@ -57,6 +57,12 @@ interface BuilderState {
   toggleEditMode: () => void;
   setHighlightReferenceId: (id: string | null) => void;
   convertToComponent: (nodeId: string, name: string) => void;
+
+  draftPostTree: TreeNode | null;
+  draftPostThumbnail: string | null;
+  draftPostPageNames: string[];
+  setDraftPost: (payload: { tree: TreeNode; thumbnail: string; pageNames: string[] }) => void;
+  clearDraftPost: () => void;
 }
 
 export function findNode(node: TreeNode, id: string): TreeNode | null {
@@ -182,6 +188,9 @@ tree: createDefaultProjectTree(),
   user: null,
   authLoading: true,
   currentProjectId: null,
+  draftPostTree: null,
+  draftPostThumbnail: null,
+  draftPostPageNames: [],
 
   setActiveNode: (id) => set({ activeNodeId: id }),
   setActivePage: (id) => set({ activePageId: id }),
@@ -462,8 +471,9 @@ tree: createDefaultProjectTree(),
   setPreviewContainerEl: (el) => set({ previewContainerEl: el }),
 setUser: (user) => set({ user }),
   setAuthLoading: (authLoading) => set({ authLoading }),
-  setCurrentProjectId: (id) => set({ currentProjectId: id }),
-  loadProjectTree: (tree, projectId) =>
+  setCurrentProjectId: (id) => set({ currentProjectId: id }),  setDraftPost: ({ tree, thumbnail, pageNames }) =>
+    set({ draftPostTree: tree, draftPostThumbnail: thumbnail, draftPostPageNames: pageNames }),
+  clearDraftPost: () => set({ draftPostTree: null, draftPostThumbnail: null, draftPostPageNames: [] }),  loadProjectTree: (tree, projectId) =>
     set({
       tree,
       currentProjectId: projectId,
@@ -496,6 +506,18 @@ function collectComponents(node: TreeNode, acc: { id: string; name: string }[] =
 export function useComponentList(): { id: string; name: string }[] {
   const tree = useBuilderStore((s) => s.tree);
   return useMemo(() => collectComponents(tree), [tree]);
+}
+
+function collectPageNames(node: TreeNode, acc: string[] = []): string[] {
+  if (node.type === SYSTEM_NODE_IDS.page) {
+    acc.push(String((node.props as { name?: string }).name ?? "Page"));
+  }
+  node.children.forEach((c) => collectPageNames(c, acc));
+  return acc;
+}
+
+export function getPageNamesInOrder(tree: TreeNode): string[] {
+  return collectPageNames(tree);
 }
 
 // Component đang chứa parentId (nếu có) — dùng để ẩn/chặn tự-instance-vào-chính-mình
