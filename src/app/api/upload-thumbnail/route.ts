@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   }
 
   const { env } = getCloudflareContext();
-  const bucket = env.THUMBNAILS_BUCKET; // tên phải khớp đúng "binding" trong wrangler.jsonc
+  const bucket = (env as { THUMBNAILS_BUCKET: R2Bucket }).THUMBNAILS_BUCKET; // tên phải khớp đúng "binding" trong wrangler.jsonc
 
   const fileExtension = file.type.split("/")[1] || "jpg";
   const fileKey = `thumbnails/${user.id}/${crypto.randomUUID()}.${fileExtension}`;
