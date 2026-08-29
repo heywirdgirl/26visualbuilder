@@ -6,7 +6,7 @@
 ```jsonc
 {
   "r2_buckets": [
-    { "binding": "THUMBNAILS_BUCKET", "bucket_name": "26visualbuilder" }
+    { "binding": "THUMBNAILS_BUCKET", "bucket_name": "26visualbuilder-image" }
   ]
 }
 ```

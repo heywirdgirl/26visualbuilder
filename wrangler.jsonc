@@ -9,7 +9,7 @@
     "binding": "ASSETS"
   },
   "r2_buckets": [
-    { "binding": "THUMBNAILS_BUCKET", "bucket_name": "my-social-app" }
+    { "binding": "THUMBNAILS_BUCKET", "bucket_name": "26visualbuilder-image" }
   ],
   "observability": {
     "enabled": true,
