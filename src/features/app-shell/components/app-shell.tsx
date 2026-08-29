@@ -13,6 +13,7 @@ import { CodeModal } from "@/features/code-generator/components/code-modal";
 import { ExportImageButton } from "@/features/export-image/components/export-image-button";
 import { ExportProjectButton } from "@/features/export-project/components/export-project-button";
 import { SaveProjectButton } from "@/features/cloud-save/components/save-project-button";
+import { PostProjectButton } from "@/features/publish-post/components/post-project-button";
 import { LoginButton } from "@/features/auth/components/login-button";
 import { useTreeShortcuts } from "@/features/nodes-tree/hooks/use-tree-shortcuts";
 import { useBuilderStore } from "@/core/store/builder-store";
@@ -40,6 +41,7 @@ export function AppShell() {
             <ExportImageButton />
             <ExportProjectButton />
             <SaveProjectButton />
+            <PostProjectButton />
             {user && (
               <Link href="/projects">
                 <Button variant="outline" size="sm">
