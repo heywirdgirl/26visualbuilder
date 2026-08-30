@@ -38,8 +38,9 @@ export async function POST(request: Request) {
     const fileExtension = file.type.split("/")[1] || "jpg";
     const fileKey = `thumbnails/${user.id}/${crypto.randomUUID()}.${fileExtension}`;
 
-    const arrayBuffer = await file.arrayBuffer();
-    await bucket.put(fileKey, arrayBuffer, { httpMetadata: { contentType: file.type } });
+    // Pass file as Blob to avoid R2 serialization issues with httpMetadata
+    // R2 will infer content-type from the Blob's type property
+    await bucket.put(fileKey, file);
 
     return NextResponse.json({ success: true, publicUrl: `${getR2PublicUrl()}/${fileKey}` });
   } catch (err) {
