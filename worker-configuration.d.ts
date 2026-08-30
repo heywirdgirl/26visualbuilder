@@ -13,7 +13,7 @@ interface Env extends __BaseEnv_Env {}
 // Extend CloudflareEnv for @opennextjs/cloudflare
 declare global {
 	interface CloudflareEnv {
-		THUMBNAILS_BUCKET?: R2Bucket;
+		THUMBNAILS_BUCKET: R2Bucket;
 	}
 }
 
