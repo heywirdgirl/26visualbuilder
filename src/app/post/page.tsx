@@ -1,5 +1,8 @@
 "use client";
 
+
+
+
 import { useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -61,7 +64,7 @@ export default function NewPostPage() {
 
     setIsPosting(true);
     try {
-      const thumbnailFile = dataUrlToFile(draftThumbnail, `${slug}.png`);
+      const thumbnailFile = dataUrlToFile(draftThumbnail, `${slug}.webp`);
       const publicUrl = await uploadImage(thumbnailFile);
       if (!publicUrl) {
         setIsPosting(false);

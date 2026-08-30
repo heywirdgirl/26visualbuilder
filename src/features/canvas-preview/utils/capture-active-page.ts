@@ -1,5 +1,7 @@
+
+// Thành:
+import { captureNodeToWebp, CaptureOptions } from "./capture-image";
 import { useBuilderStore } from "@/core/store/builder-store";
-import { captureNodeToPng, CaptureOptions } from "./capture-image";
 
 function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
@@ -16,7 +18,8 @@ export async function captureActivePageClean(options?: CaptureOptions): Promise<
   await nextFrame();
 
   try {
-    return await captureNodeToPng(previewContainerEl, options);
+    return await captureNodeToWebp(previewContainerEl, options);
+
   } finally {
     setActiveNode(activeNodeId);
   }
