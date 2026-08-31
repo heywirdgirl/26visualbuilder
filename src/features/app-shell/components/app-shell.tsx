@@ -5,7 +5,7 @@
 "use client";
 
 import Link from "next/link";
-import { FolderKanban } from "lucide-react";
+import { FolderKanban, Newspaper } from "lucide-react";
 import { TreeView } from "@/features/nodes-tree/components/tree-view";
 import { InspectorPanel } from "@/features/inspector/components/inspector-panel";
 import { PreviewWorkspace } from "@/features/canvas-preview/components/preview-workspace";
@@ -42,6 +42,12 @@ export function AppShell() {
             <ExportProjectButton />
             <SaveProjectButton />
             <PostProjectButton />
+            <Link href="/">
+              <Button variant="outline" size="sm">
+                <Newspaper className="h-3.5 w-3.5 mr-1.5" />
+                Feed
+              </Button>
+            </Link>
             {user && (
               <Link href="/projects">
                 <Button variant="outline" size="sm">
