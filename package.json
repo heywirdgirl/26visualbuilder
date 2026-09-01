@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "npm run generate:ui-templates && concurrently \"npm:dev:next\" \"npm:dev:css\"",
+    "dev": "pnpm run generate:ui-templates && concurrently \"pnpm:dev:next\" \"pnpm:dev:css\"",
     "dev:next": "next dev -H localhost --webpack",
-    "dev:css": "tailwindcss -i ./src/app/globals.css -o ./public/preview.css --watch",
-    "build": "npm run generate:ui-templates && npm run build:css && next build",
+    "dev:css": "CHOKIDAR_USEPOLLING=true tailwindcss -i ./src/app/globals.css -o ./public/preview.css --watch=src",
+    "build": "pnpm run generate:ui-templates && npm run build:css && next build",
     "build:css": "tailwindcss -i ./src/app/globals.css -o ./public/preview.css --minify",
     "build:cloudflare": "pnpm run generate:ui-templates && pnpm run build:css && opennextjs-cloudflare build",
     "preview": "pnpm run build:cloudflare && opennextjs-cloudflare preview",

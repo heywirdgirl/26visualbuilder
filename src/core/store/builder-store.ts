@@ -31,6 +31,7 @@ interface BuilderState {
   authLoading: boolean;
   currentProjectId: string | null;
   setCurrentProjectId: (id: string | null) => void;
+  loadProjectTree: (tree: TreeNode, projectId: string) => void;
   setUser: (user: User | null) => void;
   setAuthLoading: (loading: boolean) => void;
   setActiveBreakpoint: (bp: Breakpoint) => void;
@@ -56,6 +57,12 @@ interface BuilderState {
   toggleEditMode: () => void;
   setHighlightReferenceId: (id: string | null) => void;
   convertToComponent: (nodeId: string, name: string) => void;
+
+  draftPostTree: TreeNode | null;
+  draftPostThumbnail: string | null;
+  draftPostPageNames: string[];
+  setDraftPost: (payload: { tree: TreeNode; thumbnail: string; pageNames: string[] }) => void;
+  clearDraftPost: () => void;
 }
 
 export function findNode(node: TreeNode, id: string): TreeNode | null {
@@ -134,38 +141,43 @@ function findFirstPageId(tree: TreeNode): string | null {
   return null;
 }
 
+
+export function createDefaultProjectTree(): TreeNode {
+  return {
+    id: "root",
+    type: SYSTEM_NODE_IDS.folder,
+    props: { name: "Project" },
+    style: { base: {} },
+    children: [
+      {
+        id: APP_FOLDER_ID,
+        type: SYSTEM_NODE_IDS.folder,
+        props: { name: "App" },
+        style: { base: {} },
+        children: [
+          {
+            id: HOME_PAGE_ID,
+            type: SYSTEM_NODE_IDS.page,
+            props: { name: "Home", slug: "" },
+            style: { base: { direction: "flex-col", gap: 4, padding: 4 } },
+            children: [],
+          },
+        ],
+      },
+      {
+        id: COMPONENTS_FOLDER_ID,
+        type: SYSTEM_NODE_IDS.folder,
+        props: { name: "Components" },
+        style: { base: {} },
+        children: [],
+      },
+    ],
+  };
+}
+
 export const useBuilderStore = create<BuilderState>((set) => ({
   // 1. Default tree init — Project/App/Components/Home
-tree: {
-  id: "root",
-  type: SYSTEM_NODE_IDS.folder,
-  props: { name: "Project" },
-  style: { base: {} }, // 👈 thêm
-  children: [
-    {
-      id: APP_FOLDER_ID,
-      type: SYSTEM_NODE_IDS.folder,
-      props: { name: "App" },
-      style: { base: {} }, // 👈 thêm
-      children: [
-        {
-          id: HOME_PAGE_ID,
-          type: SYSTEM_NODE_IDS.page,
-          props: { name: "Home", slug: "" }, // 👈 bỏ direction/gap/padding
-          style: { base: { direction: "flex-col", gap: 4, padding: 4 } }, // 👈 thêm
-          children: [],
-        },
-      ],
-    },
-    {
-      id: COMPONENTS_FOLDER_ID,
-      type: SYSTEM_NODE_IDS.folder,
-      props: { name: "Components" },
-      style: { base: {} }, // 👈 thêm
-      children: [],
-    },
-  ],
-},
+tree: createDefaultProjectTree(),
   activeNodeId: null,
   activePageId: HOME_PAGE_ID,
   menuHidden: false,
@@ -176,6 +188,9 @@ tree: {
   user: null,
   authLoading: true,
   currentProjectId: null,
+  draftPostTree: null,
+  draftPostThumbnail: null,
+  draftPostPageNames: [],
 
   setActiveNode: (id) => set({ activeNodeId: id }),
   setActivePage: (id) => set({ activePageId: id }),
@@ -456,9 +471,20 @@ tree: {
   setPreviewContainerEl: (el) => set({ previewContainerEl: el }),
 setUser: (user) => set({ user }),
   setAuthLoading: (authLoading) => set({ authLoading }),
-  setCurrentProjectId: (id) => set({ currentProjectId: id }),
-}));
+  setCurrentProjectId: (id) => set({ currentProjectId: id }),  setDraftPost: ({ tree, thumbnail, pageNames }) =>
+    set({ draftPostTree: tree, draftPostThumbnail: thumbnail, draftPostPageNames: pageNames }),
+  clearDraftPost: () => set({ draftPostTree: null, draftPostThumbnail: null, draftPostPageNames: [] }),  loadProjectTree: (tree, projectId) =>
+    set({
+      tree,
+      currentProjectId: projectId,
+      activeNodeId: null,
+      activePageId: findFirstPageId(tree), // tự tìm Page đầu tiên trong cây vừa nạp — hàm này đã có sẵn từ V1.9
+      editMode: false,
+    }),
 
+  
+}));
+  
 export function useActiveNode() {
   return useBuilderStore((s) => (s.activeNodeId ? findNode(s.tree, s.activeNodeId) : null));
 }
@@ -480,6 +506,18 @@ function collectComponents(node: TreeNode, acc: { id: string; name: string }[] =
 export function useComponentList(): { id: string; name: string }[] {
   const tree = useBuilderStore((s) => s.tree);
   return useMemo(() => collectComponents(tree), [tree]);
+}
+
+function collectPageNames(node: TreeNode, acc: string[] = []): string[] {
+  if (node.type === SYSTEM_NODE_IDS.page) {
+    acc.push(String((node.props as { name?: string }).name ?? "Page"));
+  }
+  node.children.forEach((c) => collectPageNames(c, acc));
+  return acc;
+}
+
+export function getPageNamesInOrder(tree: TreeNode): string[] {
+  return collectPageNames(tree);
 }
 
 // Component đang chứa parentId (nếu có) — dùng để ẩn/chặn tự-instance-vào-chính-mình
