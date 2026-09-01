@@ -21,6 +21,11 @@
 --
 -- Vì vậy projects.is_public không còn cần thiết.
 --
+-- is_public không còn được sử dụng.
+-- Public project đã được chuyển sang bảng posts.
+
+drop policy if exists "Anyone can view public projects"
+  on public.projects;
 
 drop index if exists public.projects_is_public_idx;
 
