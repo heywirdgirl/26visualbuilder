@@ -1,202 +1,315 @@
+## Cập nhật `features/feed/utils/get-feed-posts.ts` — full file
 
-
-## File mới: `features/profile/actions/update-profile-action.ts`
+Mở rộng để dùng chung được cho cả Feed toàn cục **và** trang profile công khai (lọc theo tác giả), tránh viết trùng logic query lần 2:
 
 ```typescript
-"use server";
-
 import { createClient } from "@/core/supabase/server";
+import { getPageNamesInOrder } from "@/core/store/builder-store";
+import { TreeNode } from "@/core/types/builder.types";
 
-export async function updateProfileAction({
-  displayName,
-  username,
-}: {
-  displayName: string;
-  username: string;
-}) {
+export interface FeedPost {
+  id: string;
+  name: string;
+  slug: string;
+  thumbnailUrl: string | null;
+  pageNames: string[];
+  authorUsername: string;
+  authorName: string;
+  publishedAt: string;
+}
+
+export async function getFeedPosts(options?: { authorId?: string }): Promise<FeedPost[]> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Cần đăng nhập." };
 
-  // display_name: update thẳng qua RLS bình thường — không có ràng buộc unique nên
-  // không cần đi qua RPC như username.
-  const { error: displayNameError } = await supabase
+  let query = supabase
+    .from("posts")
+    .select("id, name, slug, tree_data, thumbnail_url, author_id, published_at")
+    .eq("is_active", true)
+    .order("published_at", { ascending: false });
+
+  if (options?.authorId) query = query.eq("author_id", options.authorId);
+
+  const { data: posts, error } = await query;
+  if (error || !posts) {
+    console.error("[feed] Lỗi tải danh sách bài đăng:", error);
+    return [];
+  }
+
+  const authorIds = Array.from(new Set(posts.map((p) => p.author_id)));
+  const { data: profiles } = await supabase
     .from("profiles")
-    .update({ display_name: displayName.trim() || null })
-    .eq("id", user.id);
+    .select("id, username, display_name")
+    .in("id", authorIds);
 
-  if (displayNameError) {
-    console.error("[profile] Cập nhật display_name thất bại:", displayNameError);
-    return { error: "Không thể cập nhật tên hiển thị." };
-  }
+  const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
 
-  // username: BẮT BUỘC qua RPC — trigger prevent_direct_username_change chặn mọi
-  // đường khác, đảm bảo redirect history luôn được ghi đúng.
-  const { error: usernameError } = await supabase.rpc("change_username", {
-    new_username: username,
+  return posts.map((post) => {
+    const profile = profileMap.get(post.author_id);
+    return {
+      id: post.id,
+      name: post.name,
+      slug: post.slug,
+      thumbnailUrl: post.thumbnail_url,
+      pageNames: getPageNamesInOrder(post.tree_data as TreeNode),
+      authorUsername: profile?.username ?? "unknown",
+      authorName: profile?.display_name ?? "Ẩn danh",
+      publishedAt: post.published_at,
+    };
   });
-
-  if (usernameError) {
-    console.error("[profile] Đổi username thất bại:", usernameError);
-    return { error: usernameError.message ?? "Không thể đổi username." };
-  }
-
-  return { success: true as const };
 }
 ```
 
-## File mới: `features/profile/components/profile-form.tsx`
+## File mới: `features/profile/utils/resolve-profile-by-username.ts`
 
-```tsx
-"use client";
+Gói chung logic PRD mục 5 (redirect khi username đã đổi) + mục 13 rule 1 (404 khi username không tồn tại) — dùng lại được cho cả 2 trang `[username]` và `[username]/[slug]`:
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Loader2 } from "lucide-react";
-import { updateProfileAction } from "../actions/update-profile-action";
+```typescript
+import { redirect, notFound } from "next/navigation";
+import { createClient } from "@/core/supabase/server";
 
-interface Profile {
+export interface ResolvedProfile {
+  id: string;
   username: string;
   display_name: string | null;
   avatar_url: string | null;
 }
 
-function slugifyPreview(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-+|-+$)/g, "");
-}
-
-export function ProfileForm({ initialProfile }: { initialProfile: Profile }) {
-  const router = useRouter();
-  const [displayName, setDisplayName] = useState(initialProfile.display_name ?? "");
-  const [username, setUsername] = useState(initialProfile.username);
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const previewSlug = slugifyPreview(username);
-  const isValidFormat = /^[a-z0-9-]{3,30}$/.test(previewSlug);
-
-  const handleSave = async () => {
-    setError(null);
-    if (!isValidFormat) {
-      setError("Username phải 3-30 ký tự, chỉ gồm chữ thường/số/dấu gạch ngang.");
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      const res = await updateProfileAction({ displayName, username: previewSlug });
-      if (!res.success) {
-        setError(res.error ?? "Lưu thất bại.");
-        return;
-      }
-      setUsername(previewSlug);
-      router.refresh(); // đồng bộ lại Server Component khác (Feed/Sidebar dùng username mới)
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3">
-        <Avatar size="lg">
-          {initialProfile.avatar_url && <AvatarImage src={initialProfile.avatar_url} alt={displayName} />}
-          <AvatarFallback>{(displayName || username).slice(0, 2).toUpperCase()}</AvatarFallback>
-        </Avatar>
-        <p className="text-xs text-muted-foreground">Avatar đồng bộ từ Google, chưa hỗ trợ đổi riêng.</p>
-      </div>
-
-      <label className="flex flex-col gap-1 text-sm">
-        Tên hiển thị
-        <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Tên của bạn" />
-      </label>
-
-      <label className="flex flex-col gap-1 text-sm">
-        Username
-        <div className="flex items-center gap-1 text-sm">
-          <span className="text-muted-foreground shrink-0">26visualbuilder.app/</span>
-          <Input value={username} onChange={(e) => setUsername(e.target.value)} className="flex-1" />
-        </div>
-        {username !== previewSlug && (
-          <span className="text-xs text-muted-foreground">Sẽ lưu thành: {previewSlug || "—"}</span>
-        )}
-      </label>
-
-      {error && <p className="text-sm text-red-500">{error}</p>}
-
-      <Button onClick={handleSave} disabled={isSaving}>
-        {isSaving && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
-        {isSaving ? "Đang lưu..." : "Lưu thay đổi"}
-      </Button>
-    </div>
-  );
-}
-```
-
-## File mới: `src/app/(shell)/profile/page.tsx`
-
-```tsx
-import { redirect } from "next/navigation";
-import { createClient } from "@/core/supabase/server";
-import { ProfileForm } from "@/features/profile/components/profile-form";
-
-export default async function ProfilePage() {
+// username không tồn tại thẳng -> tra username_redirects (đổi tên trước đó) -> redirect
+// sang URL đúng username hiện tại. Không tìm thấy ở cả 2 nơi -> 404 thật (PRD mục 13).
+export async function resolveProfileByUsername(
+  username: string,
+  buildRedirectPath: (newUsername: string) => string
+): Promise<ResolvedProfile> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
 
-  const { data: profile, error } = await supabase
+  const { data: profile } = await supabase
     .from("profiles")
-    .select("username, display_name, avatar_url")
-    .eq("id", user.id)
+    .select("id, username, display_name, avatar_url")
+    .eq("username", username)
     .single();
 
-  if (error || !profile) redirect("/");
+  if (profile) return profile;
+
+  const { data: redirectRow } = await supabase
+    .from("username_redirects")
+    .select("user_id")
+    .eq("old_username", username)
+    .single();
+
+  if (redirectRow) {
+    const { data: currentProfile } = await supabase
+      .from("profiles")
+      .select("username")
+      .eq("id", redirectRow.user_id)
+      .single();
+    if (currentProfile) redirect(buildRedirectPath(currentProfile.username));
+  }
+
+  notFound();
+}
+```
+
+## File mới: `src/app/(shell)/[username]/page.tsx`
+
+```tsx
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { resolveProfileByUsername } from "@/features/profile/utils/resolve-profile-by-username";
+import { getFeedPosts } from "@/features/feed/utils/get-feed-posts";
+import { PostCard } from "@/features/feed/components/post-card";
+
+export default async function PublicProfilePage({
+  params,
+}: {
+  params: Promise<{ username: string }>;
+}) {
+  const { username } = await params;
+  const profile = await resolveProfileByUsername(username, (u) => `/${u}`);
+  const posts = await getFeedPosts({ authorId: profile.id });
 
   return (
-    <div className="max-w-md mx-auto p-6">
-      <h1 className="text-lg font-semibold mb-4">Profile Settings</h1>
-      <ProfileForm initialProfile={profile} />
+    <div className="max-w-2xl mx-auto p-4 flex flex-col gap-4">
+      <div className="flex items-center gap-3">
+        <Avatar size="lg">
+          {profile.avatar_url && (
+            <AvatarImage src={profile.avatar_url} alt={profile.display_name ?? profile.username} />
+          )}
+          <AvatarFallback>
+            {(profile.display_name ?? profile.username).slice(0, 2).toUpperCase()}
+          </AvatarFallback>
+        </Avatar>
+        <div>
+          <p className="text-base font-semibold">{profile.display_name ?? profile.username}</p>
+          <p className="text-sm text-muted-foreground">@{profile.username}</p>
+        </div>
+      </div>
+
+      {posts.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-12">Chưa có bài đăng nào.</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {posts.map((post) => (
+            <PostCard key={post.id} post={post} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 ```
 
-## Patch `features/auth/components/login-button.tsx`
+## File mới: `src/app/(shell)/[username]/[slug]/page.tsx`
 
-Thêm lối vào `/profile` — hiện chưa có chỗ nào dẫn tới trang này. Thêm import:
-```typescript
+```tsx
+import { notFound } from "next/navigation";
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+import { createClient } from "@/core/supabase/server";
+import { getPageNamesInOrder } from "@/core/store/builder-store";
+import { TreeNode } from "@/core/types/builder.types";
+import { resolveProfileByUsername } from "@/features/profile/utils/resolve-profile-by-username";
+import { CloneButton } from "@/features/publish-post/components/clone-button";
+
+export default async function PostDetailPage({
+  params,
+}: {
+  params: Promise<{ username: string; slug: string }>;
+}) {
+  const { username, slug } = await params;
+  const profile = await resolveProfileByUsername(username, (u) => `/${u}/${slug}`);
+
+  const supabase = await createClient();
+  const { data: post, error } = await supabase
+    .from("posts")
+    .select("id, name, description, tree_data, thumbnail_url, author_id, published_at, clone_count, is_active")
+    .eq("author_id", profile.id) // đồng thời chặn luôn Rule 3 (slug thuộc user khác) — cùng
+    .eq("slug", slug)            // 1 query lọc cả 2 điều kiện, không cần check tách riêng.
+    .single();
+
+  if (error || !post || !post.is_active) notFound(); // Rule 2
+
+  const pageNames = getPageNamesInOrder(post.tree_data as TreeNode);
+
+  return (
+    <div className="max-w-2xl mx-auto p-4 flex flex-col gap-4">
+      <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground w-fit">
+        <ArrowLeft className="h-3.5 w-3.5" />
+        Quay lại Feed
+      </Link>
+
+      {post.thumbnail_url && (
+        <img src={post.thumbnail_url} alt={post.name} className="w-full rounded-lg border" />
+      )}
+
+      <div>
+        <h1 className="text-lg font-semibold">{post.name}</h1>
+        <Link href={`/${profile.username}`} className="text-sm text-muted-foreground hover:underline">
+          bởi {profile.display_name ?? profile.username}
+        </Link>
+      </div>
+
+      {post.description && <p className="text-sm">{post.description}</p>}
+
+      <div>
+        <p className="text-xs font-medium text-muted-foreground uppercase mb-1">
+          Gồm {pageNames.length} trang
+        </p>
+        <ul className="text-sm flex flex-wrap gap-2">
+          {pageNames.map((name) => (
+            <li key={name} className="border rounded-full px-2.5 py-0.5 text-xs">{name}</li>
+          ))}
+        </ul>
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        Đăng ngày {new Date(post.published_at).toLocaleDateString("vi-VN")} · {post.clone_count} lượt clone
+      </p>
+
+      <CloneButton postId={post.id} />
+    </div>
+  );
+}
 ```
 
-Đổi phần hiện khi đã login (bọc avatar+tên trong `Link`, nút đăng xuất giữ riêng ngoài Link):
+## Cập nhật `src/app/(shell)/posts/[postId]/page.tsx` — full file, đổi thành redirect-only
+
 ```tsx
-return (
-  <div className="flex items-center gap-2 rounded-md border bg-white/80 px-2 py-2 shadow-sm">
-    <Link href="/profile" className="flex items-center gap-2 min-w-0">
-      <Avatar size="sm">
-        {avatarUrl ? <AvatarImage src={avatarUrl} alt={displayName} /> : null}
-        <AvatarFallback>{fallback}</AvatarFallback>
-      </Avatar>
-      <div className="min-w-0">
-        <p className="truncate text-[11px] font-medium">{displayName}</p>
-        <p className="truncate text-[10px] text-muted-foreground">{user.email ?? "No email"}</p>
+import { notFound, redirect } from "next/navigation";
+import { createClient } from "@/core/supabase/server";
+
+export default async function LegacyPostRedirectPage({
+  params,
+}: {
+  params: Promise<{ postId: string }>;
+}) {
+  const { postId } = await params;
+  const supabase = await createClient();
+
+  const { data: post, error } = await supabase
+    .from("posts")
+    .select("slug, author_id")
+    .eq("id", postId)
+    .single();
+
+  if (error || !post) notFound();
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("username")
+    .eq("id", post.author_id)
+    .single();
+
+  if (!profile) notFound();
+
+  redirect(`/${profile.username}/${post.slug}`);
+}
+```
+
+## Cập nhật `features/feed/components/post-card.tsx` — full file
+
+```tsx
+import Link from "next/link";
+import { FeedPost } from "../utils/get-feed-posts";
+import { CloneButton } from "@/features/publish-post/components/clone-button";
+
+export function PostCard({ post }: { post: FeedPost }) {
+  return (
+    <Link
+      href={`/${post.authorUsername}/${post.slug}`}
+      className="flex border rounded-lg overflow-hidden hover:shadow-md transition-shadow bg-white"
+    >
+      <div className="w-2/5 p-3 flex flex-col gap-1.5 min-w-0">
+        <p className="text-sm font-semibold truncate">{post.name}</p>
+        <p className="text-xs text-muted-foreground truncate">bởi {post.authorName}</p>
+
+        <div className="mt-1">
+          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+            {post.pageNames.length} trang
+          </p>
+          <ul className="text-xs text-foreground/80 mt-0.5">
+            {post.pageNames.slice(0, 4).map((name) => (
+              <li key={name} className="truncate">· {name}</li>
+            ))}
+            {post.pageNames.length > 4 && (
+              <li className="text-muted-foreground">+ {post.pageNames.length - 4} trang khác</li>
+            )}
+          </ul>
+        </div>
+
+        <CloneButton postId={post.id} className="mt-auto w-fit" />
+      </div>
+
+      <div className="w-3/5 bg-muted">
+        {post.thumbnailUrl ? (
+          <img src={post.thumbnailUrl} alt={post.name} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
+            Không có ảnh
+          </div>
+        )}
       </div>
     </Link>
-    <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => void signOut()} disabled={isSigningOut}>
-      {isSigningOut ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
-    </Button>
-  </div>
-);
+  );
+}
 ```
 
 ---
