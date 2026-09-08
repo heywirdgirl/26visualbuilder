@@ -5,7 +5,7 @@ import { CloneButton } from "@/features/publish-post/components/clone-button";
 export function PostCard({ post }: { post: FeedPost }) {
   return (
     <Link
-      href={`/posts/${post.id}`}
+      href={`/${post.authorUsername}/${post.slug}`}
       className="flex border rounded-lg overflow-hidden hover:shadow-md transition-shadow bg-white"
     >
       <div className="w-2/5 p-3 flex flex-col gap-1.5 min-w-0">
