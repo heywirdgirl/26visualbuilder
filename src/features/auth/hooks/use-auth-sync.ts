@@ -28,7 +28,12 @@ export function useAuthSync() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!mounted) return;
-      setUser(session?.user ?? null);
+      const previousUserId = useBuilderStore.getState().user?.id;
+      const nextUser = session?.user ?? null;
+      if (nextUser?.id !== previousUserId) {
+        useBuilderStore.getState().resetProjectCache();
+      }
+      setUser(nextUser);
       setAuthLoading(false);
     });
 

@@ -1,253 +1,598 @@
+## Bước 1 — Di chuyển file vào Route Group `(shell)`
 
+Route Group `(shell)` (tên trong ngoặc) là cơ chế **có sẵn** của Next.js App Router — không ảnh hưởng URL, chỉ dùng để nhóm layout. `/editor`, `/post`, `/auth/*` đứng ngoài nhóm này nên **tự động không có Topbar**, không cần code loại trừ gì cả — đúng bản chất kỹ thuật đã note ở lượt trước, giờ áp dụng cụ thể. Quyết định thêm: `/post` (trang soạn bài đăng) cũng đứng **ngoài** `(shell)` — cùng lý do với Editor, đây là task tập trung, không cần Topbar gây phân tán.
 
+```bash
+mkdir -p "src/app/(shell)"
+mv src/app/page.tsx "src/app/(shell)/page.tsx"
+mv src/app/posts "src/app/(shell)/posts"
+mv src/app/projects "src/app/(shell)/projects"
+```
 
+Không sửa nội dung bên trong 3 file/thư mục đó — chỉ đổi vị trí, mọi import đều dùng alias `@/` nên không bị ảnh hưởng.
 
+## File mới: `src/app/(shell)/layout.tsx`
 
+```tsx
+import { GlobalTopbar } from "@/features/global-shell/components/global-topbar";
 
-## `src/app/editor/page.tsx` — file mới, dời nguyên nội dung `page.tsx` cũ sang đây
+export default function ShellLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen flex flex-col">
+      <GlobalTopbar />
+      <main className="flex-1">{children}</main>
+    </div>
+  );
+}
+```
+
+Layout này **lồng bên trong** `src/app/layout.tsx` (RootLayout chứa `ClientProvider`/`useAuthSync` — vẫn áp dụng cho toàn app, kể cả Editor) — chỉ thêm Topbar cho riêng nhóm `(shell)`.
+
+## Patch `core/store/builder-store.ts`
+
+Thêm interface (đặt gần đầu file, cạnh các type khác):
+```typescript
+export interface RecentProject {
+  id: string;
+  name: string;
+  description: string | null;
+  thumbnail_url: string | null;
+  updated_at: string;
+}
+```
+
+Thêm vào interface `BuilderState`:
+```typescript
+  recentProjects: RecentProject[];
+  projectCount: number;
+  projectsLoaded: boolean;
+  projectSidebarOpen: boolean;
+  highlightedProjectId: string | null;
+  setRecentProjects: (projects: RecentProject[], count: number) => void;
+  setProjectSidebarOpen: (open: boolean) => void;
+  setHighlightedProjectId: (id: string | null) => void;
+  resetProjectCache: () => void;
+```
+
+Thêm vào default state (cạnh `draftPostPageNames: [],`):
+```typescript
+  recentProjects: [],
+  projectCount: 0,
+  projectsLoaded: false,
+  projectSidebarOpen: false,
+  highlightedProjectId: null,
+```
+
+Thêm action (cạnh `clearDraftPost`):
+```typescript
+  setRecentProjects: (recentProjects, count) =>
+    set({ recentProjects, projectCount: count, projectsLoaded: true }),
+  setProjectSidebarOpen: (projectSidebarOpen) => set({ projectSidebarOpen }),
+  setHighlightedProjectId: (highlightedProjectId) => set({ highlightedProjectId }),
+  resetProjectCache: () => set({ recentProjects: [], projectCount: 0, projectsLoaded: false }),
+```
+
+**Đúng đúng nguyên tắc đã giữ xuyên suốt project:** store chỉ chứa state + setter thuần, **không gọi Supabase trực tiếp trong này** — logic fetch thật nằm ở hook riêng bên dưới, giống hệt cách `use-save-project.ts`/`use-load-project.ts` đã tách.
+
+## Vá 1 lỗ hổng nhỏ phát sinh — `features/auth/hooks/use-auth-sync.ts`
+
+Nếu không sửa, đổi tài khoản trên cùng tab (đăng xuất rồi đăng nhập tài khoản khác) sẽ **hiện tạm project của người trước** trong sidebar, vì `projectsLoaded` vẫn `true` từ session cũ nên Topbar không fetch lại:
+
+```typescript
+// Đổi đoạn onAuthStateChange trong useAuthSync:
+const {
+  data: { subscription },
+} = supabase.auth.onAuthStateChange((_event, session) => {
+  if (!mounted) return;
+  const previousUserId = useBuilderStore.getState().user?.id;
+  const nextUser = session?.user ?? null;
+  if (nextUser?.id !== previousUserId) {
+    useBuilderStore.getState().resetProjectCache(); // 👈 thêm — buộc fetch lại khi đổi user
+  }
+  setUser(nextUser);
+  setAuthLoading(false);
+});
+```
+
+## File mới: `features/global-shell/hooks/use-recent-projects.ts`
+
+```typescript
+"use client";
+
+import { useCallback } from "react";
+import { useBuilderStore } from "@/core/store/builder-store";
+import { createClient } from "@/core/supabase/client";
+
+export function useRecentProjects() {
+  const setRecentProjects = useBuilderStore((s) => s.setRecentProjects);
+
+  const fetchRecentProjects = useCallback(async () => {
+    const { user } = useBuilderStore.getState();
+    if (!user) return;
+
+    const supabase = createClient();
+    // { count: "exact" } trong CÙNG 1 query — trả về vừa tổng số thật (cho badge ☰7),
+    // vừa danh sách rút gọn (cho sidebar) — không cần gọi 2 lần như PRD gợi ý ngầm.
+    const { data, count, error } = await supabase
+      .from("projects")
+      .select("id, name, description, thumbnail_url, updated_at", { count: "exact" })
+      .eq("owner_id", user.id)
+      .order("updated_at", { ascending: false })
+      .limit(10);
+
+    if (error) {
+      console.error("[global-shell] Tải danh sách project thất bại:", error);
+      return;
+    }
+
+    setRecentProjects(data ?? [], count ?? 0);
+  }, [setRecentProjects]);
+
+  return { fetchRecentProjects };
+}
+```
+
+## File mới: `features/global-shell/components/global-topbar.tsx`
 
 ```tsx
 "use client";
 
-import { AppShell } from "@/features/app-shell/components/app-shell";
+import Link from "next/link";
+import { useEffect } from "react";
+import { Menu } from "lucide-react";
+import { useBuilderStore } from "@/core/store/builder-store";
+import { useRecentProjects } from "../hooks/use-recent-projects";
+import { ProjectSidebar } from "./project-sidebar";
 
-export default function EditorScratchPage() {
-  return <AppShell />;
+export function GlobalTopbar() {
+  const user = useBuilderStore((s) => s.user);
+  const projectCount = useBuilderStore((s) => s.projectCount);
+  const projectsLoaded = useBuilderStore((s) => s.projectsLoaded);
+  const sidebarOpen = useBuilderStore((s) => s.projectSidebarOpen);
+  const setSidebarOpen = useBuilderStore((s) => s.setProjectSidebarOpen);
+  const { fetchRecentProjects } = useRecentProjects();
+
+  // Topbar chỉ mount 1 lần cho cả nhóm (shell) — layout không remount khi chuyển trang
+  // trong cùng nhóm — nên fetch-on-mount ở đây không lặp lại quá mức khi điều hướng.
+  useEffect(() => {
+    if (user && !projectsLoaded) void fetchRecentProjects();
+  }, [user, projectsLoaded, fetchRecentProjects]);
+
+  return (
+    <>
+      <header className="sticky top-0 z-40 flex items-center justify-between border-b bg-white/90 backdrop-blur px-4 py-2.5">
+        <Link href="/" className="text-sm font-semibold">26VisualBuilder</Link>
+
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="flex items-center gap-1.5 text-sm border rounded-md px-2.5 py-1.5 hover:bg-muted"
+        >
+          <Menu className="h-4 w-4" />
+          {user && <span>{projectCount}</span>}
+        </button>
+      </header>
+
+      {sidebarOpen && <ProjectSidebar />}
+    </>
+  );
 }
 ```
 
-## `features/feed/utils/get-feed-posts.ts` — file mới
+## File mới: `features/global-shell/components/project-sidebar.tsx`
+
+```tsx
+"use client";
+
+import { useEffect } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { X } from "lucide-react";
+import { useBuilderStore } from "@/core/store/builder-store";
+import { cn } from "@/core/utils/cn";
+
+export function ProjectSidebar() {
+  const router = useRouter();
+  const user = useBuilderStore((s) => s.user);
+  const recentProjects = useBuilderStore((s) => s.recentProjects);
+  const highlightedProjectId = useBuilderStore((s) => s.highlightedProjectId);
+  const setSidebarOpen = useBuilderStore((s) => s.setProjectSidebarOpen);
+
+  const close = () => setSidebarOpen(false);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") close();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleProjectClick = (id: string) => {
+    close();
+    router.push(`/editor/${id}`);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="flex-1 bg-black/30" onClick={close} />
+
+      <div className="w-full max-w-xs sm:w-80 bg-white h-full flex flex-col shadow-xl">
+        <div className="flex items-center justify-between p-4 border-b">
+          <span className="text-sm font-semibold">My Projects</span>
+          <button onClick={close} className="text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3">
+          {!user ? (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              Đăng nhập để xem project của bạn.
+            </p>
+          ) : recentProjects.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">Chưa có project nào.</p>
+          ) : (
+            <div className="flex flex-col gap-1">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase px-1 pb-1">Recent</p>
+              {recentProjects.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => handleProjectClick(p.id)}
+                  className={cn(
+                    "text-left text-sm rounded-md px-3 py-2 hover:bg-muted flex items-center justify-between",
+                    p.id === highlightedProjectId && "bg-primary/10 border border-primary/40"
+                  )}
+                >
+                  <span className="truncate">{p.name}</span>
+                  {/* Badge "✨ Just now" hiện khi có highlight — TỰ TẮT sau 2-3s thuộc Task 4,
+                      chưa code phần timeout ở đây theo đúng ranh giới Task 2/Task 4. */}
+                  {p.id === highlightedProjectId && (
+                    <span className="text-[10px] text-primary shrink-0 ml-2">✨ Just now</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="p-3 border-t">
+          <Link href="/projects" onClick={close} className="text-sm text-primary hover:underline">
+            View all projects →
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+--
+Trước khi vào code, có 1 điểm PRD mô tả **khác hẳn** hành vi mình đã viết ở turn Clone trước đó — cần bạn biết rõ, vì đây là thay đổi hành vi có chủ đích, không phải tự ý đổi ý:
+
+**Bỏ redirect tự động sang `/editor/<id>` sau khi Clone.** PRD mục 6-7 mô tả rõ: Clone xong **ở lại trang hiện tại** (Feed/Post Detail), thấy toast "✓ Added to your projects" + `☰ 7 → ☰ 8 +1` + project mới highlight trong sidebar — đúng mô hình "thêm vào thư viện của tôi" (giống bấm Star/Save trên GitHub), không phải "nhảy thẳng vào sửa ngay". Người dùng tự mở project qua sidebar khi nào sẵn sàng. Đây là quyết định UX hợp lý hơn cho ngữ cảnh feed xã hội — lướt tiếp được ngay, không bị ngắt luồng xem.
+
+Cũng cần cài **toast thật** — trước giờ toàn bộ app dùng `window.alert` (chặn UI, không thể chạy song song animation `+1`), không phù hợp cho loại feedback "thoáng qua" PRD mô tả:
+
+```bash
+npx shadcn add sonner
+```
+
+## Patch `core/providers/client-provider.tsx`
+
+```tsx
+"use client";
+
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
+import { useEffect, useState } from "react";
+import { useAuthSync } from "@/features/auth/hooks/use-auth-sync";
+
+export function ClientProvider({ children }: { children: React.ReactNode }) {
+  const [hydrated, setHydrated] = useState(false);
+
+  useAuthSync();
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
+
+  if (!hydrated) return null;
+
+  return (
+    <TooltipProvider>
+      {children}
+      <Toaster />
+    </TooltipProvider>
+  );
+}
+```
+
+## Patch `core/store/builder-store.ts`
+
+Thêm vào interface `BuilderState` (bổ sung cạnh các field đã thêm ở Task 2 — cần cho trạng thái loading/error, đúng Acceptance Criteria mục 17 "loading state, error state"):
 
 ```typescript
-import { createClient } from "@/core/supabase/server";
-import { getPageNamesInOrder } from "@/core/store/builder-store";
-import { TreeNode } from "@/core/types/builder.types";
+  isLoadingProjects: boolean;
+  projectsError: string | null;
+  setProjectsLoading: (loading: boolean) => void;
+  setProjectsError: (error: string | null) => void;
+```
 
-export interface FeedPost {
-  id: string;
-  name: string;
-  thumbnailUrl: string | null;
-  pageNames: string[];
-  authorName: string;
-  publishedAt: string;
-}
+Thêm vào default state:
+```typescript
+  isLoadingProjects: false,
+  projectsError: null,
+```
 
-export async function getFeedPosts(): Promise<FeedPost[]> {
-  const supabase = await createClient();
+Thêm action (cạnh `setRecentProjects`):
+```typescript
+  setProjectsLoading: (isLoadingProjects) => set({ isLoadingProjects }),
+  setProjectsError: (projectsError) => set({ projectsError }),
+```
 
-  const { data: posts, error } = await supabase
-    .from("posts")
-    .select("id, name, tree_data, thumbnail_url, author_id, published_at")
-    .eq("is_active", true)
-    .order("published_at", { ascending: false });
+Sửa `resetProjectCache` — reset thêm 2 field mới:
+```typescript
+  resetProjectCache: () =>
+    set({ recentProjects: [], projectCount: 0, projectsLoaded: false, isLoadingProjects: false, projectsError: null }),
+```
 
-  if (error || !posts) {
-    console.error("[feed] Lỗi tải danh sách bài đăng:", error);
-    return [];
-  }
+## Patch `features/global-shell/hooks/use-recent-projects.ts` — full file
 
-  // posts.author_id và profiles.id không có FK trực tiếp — query riêng rồi merge tay,
-  // thay vì .select("*, profiles(...)") (sẽ không hoạt động với schema hiện tại).
-  const authorIds = Array.from(new Set(posts.map((p) => p.author_id)));
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("id, display_name")
-    .in("id", authorIds);
+```typescript
+"use client";
 
-  const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
+import { useCallback } from "react";
+import { useBuilderStore } from "@/core/store/builder-store";
+import { createClient } from "@/core/supabase/client";
 
-  return posts.map((post) => ({
-    id: post.id,
-    name: post.name,
-    thumbnailUrl: post.thumbnail_url,
-    pageNames: getPageNamesInOrder(post.tree_data as TreeNode),
-    authorName: profileMap.get(post.author_id)?.display_name ?? "Ẩn danh",
-    publishedAt: post.published_at,
-  }));
+export function useRecentProjects() {
+  const setRecentProjects = useBuilderStore((s) => s.setRecentProjects);
+  const setProjectsLoading = useBuilderStore((s) => s.setProjectsLoading);
+  const setProjectsError = useBuilderStore((s) => s.setProjectsError);
+
+  const fetchRecentProjects = useCallback(async () => {
+    const { user } = useBuilderStore.getState();
+    if (!user) return;
+
+    setProjectsLoading(true);
+    setProjectsError(null);
+
+    const supabase = createClient();
+    const { data, count, error } = await supabase
+      .from("projects")
+      .select("id, name, description, thumbnail_url, updated_at", { count: "exact" })
+      .eq("owner_id", user.id)
+      .order("updated_at", { ascending: false })
+      .limit(10);
+
+    if (error) {
+      console.error("[global-shell] Tải danh sách project thất bại:", error);
+      setProjectsError("Không tải được danh sách project.");
+      setProjectsLoading(false);
+      return;
+    }
+
+    setRecentProjects(data ?? [], count ?? 0);
+    setProjectsLoading(false);
+  }, [setRecentProjects, setProjectsLoading, setProjectsError]);
+
+  return { fetchRecentProjects };
 }
 ```
 
-## `features/feed/components/post-card.tsx` — file mới
+## Cập nhật `features/publish-post/hooks/use-clone-post.ts` — full file (Task 3)
 
-Đúng bố cục bạn yêu cầu: **trái = danh sách trang (Page), phải = ảnh R2**.
+```typescript
+"use client";
+
+import { useState } from "react";
+import { toast } from "sonner";
+import { useBuilderStore } from "@/core/store/builder-store";
+import { useRecentProjects } from "@/features/global-shell/hooks/use-recent-projects";
+import { clonePostAction } from "../actions/clone-post-action";
+
+const HIGHLIGHT_DURATION_MS = 2500;
+
+export function useClonePost() {
+  const [isCloning, setIsCloning] = useState(false);
+  const setHighlightedProjectId = useBuilderStore((s) => s.setHighlightedProjectId);
+  const { fetchRecentProjects } = useRecentProjects();
+
+  const clonePost = async (postId: string) => {
+    setIsCloning(true);
+    try {
+      const res = await clonePostAction(postId);
+      if (!res.success) {
+        toast.error(res.error ?? "Clone thất bại.");
+        return;
+      }
+
+      toast.success("✓ Added to your projects");
+      await fetchRecentProjects(); // refresh list + count -> Topbar tự nhận projectCount mới, tự bump +1
+      setHighlightedProjectId(res.projectId);
+      setTimeout(() => setHighlightedProjectId(null), HIGHLIGHT_DURATION_MS);
+
+      // KHÔNG redirect sang Editor nữa — ở lại Feed/Post Detail theo đúng PRD, người
+      // dùng tự mở project qua sidebar khi sẵn sàng chỉnh sửa.
+    } finally {
+      setIsCloning(false);
+    }
+  };
+
+  return { clonePost, isCloning };
+}
+```
+
+## Cập nhật `features/global-shell/components/global-topbar.tsx` — full file (Task 4: animation `+1`)
 
 ```tsx
+"use client";
+
 import Link from "next/link";
-import { FeedPost } from "../utils/get-feed-posts";
+import { useEffect, useRef, useState } from "react";
+import { Menu } from "lucide-react";
+import { useBuilderStore } from "@/core/store/builder-store";
+import { useRecentProjects } from "../hooks/use-recent-projects";
+import { ProjectSidebar } from "./project-sidebar";
 
-export function PostCard({ post }: { post: FeedPost }) {
+export function GlobalTopbar() {
+  const user = useBuilderStore((s) => s.user);
+  const projectCount = useBuilderStore((s) => s.projectCount);
+  const projectsLoaded = useBuilderStore((s) => s.projectsLoaded);
+  const sidebarOpen = useBuilderStore((s) => s.projectSidebarOpen);
+  const setSidebarOpen = useBuilderStore((s) => s.setProjectSidebarOpen);
+  const { fetchRecentProjects } = useRecentProjects();
+
+  useEffect(() => {
+    if (user && !projectsLoaded) void fetchRecentProjects();
+  }, [user, projectsLoaded, fetchRecentProjects]);
+
+  // "+1" chỉ là hiệu ứng UI thoáng qua — không lưu DB, không cần global state,
+  // tự phát hiện bằng cách so sánh projectCount đổi so với lần render trước.
+  const prevCountRef = useRef(projectCount);
+  const [showBump, setShowBump] = useState(false);
+
+  useEffect(() => {
+    if (projectsLoaded && projectCount > prevCountRef.current) {
+      setShowBump(true);
+      const timer = setTimeout(() => setShowBump(false), 1800);
+      prevCountRef.current = projectCount;
+      return () => clearTimeout(timer);
+    }
+    prevCountRef.current = projectCount;
+  }, [projectCount, projectsLoaded]);
+
   return (
-    <Link
-      href={`/posts/${post.id}`}
-      className="flex border rounded-lg overflow-hidden hover:shadow-md transition-shadow bg-white"
-    >
-      <div className="w-2/5 p-3 flex flex-col gap-1.5 min-w-0">
-        <p className="text-sm font-semibold truncate">{post.name}</p>
-        <p className="text-xs text-muted-foreground truncate">bởi {post.authorName}</p>
+    <>
+      <header className="sticky top-0 z-40 flex items-center justify-between border-b bg-white/90 backdrop-blur px-4 py-2.5">
+        <Link href="/" className="text-sm font-semibold">26VisualBuilder</Link>
 
-        <div className="mt-1">
-          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
-            {post.pageNames.length} trang
-          </p>
-          <ul className="text-xs text-foreground/80 mt-0.5">
-            {post.pageNames.slice(0, 4).map((name) => (
-              <li key={name} className="truncate">· {name}</li>
-            ))}
-            {post.pageNames.length > 4 && (
-              <li className="text-muted-foreground">+ {post.pageNames.length - 4} trang khác</li>
-            )}
-          </ul>
-        </div>
-      </div>
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="flex items-center gap-1.5 text-sm border rounded-md px-2.5 py-1.5 hover:bg-muted"
+        >
+          <Menu className="h-4 w-4" />
+          {user && (
+            <span className="relative">
+              {projectCount}
+              {showBump && (
+                <span className="absolute -top-3 -right-3 text-[10px] font-bold text-green-600 animate-bounce">
+                  +1
+                </span>
+              )}
+            </span>
+          )}
+        </button>
+      </header>
 
-      <div className="w-3/5 bg-muted">
-        {post.thumbnailUrl ? (
-          <img src={post.thumbnailUrl} alt={post.name} className="w-full h-full object-cover" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
-            Không có ảnh
-          </div>
-        )}
-      </div>
-    </Link>
+      {sidebarOpen && <ProjectSidebar />}
+    </>
   );
 }
 ```
 
-## `src/app/page.tsx` — full file, thay hoàn toàn nội dung cũ
+## Cập nhật `features/global-shell/components/project-sidebar.tsx` — full file (Task 4: loading/error state + mobile width)
 
 ```tsx
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Wand2 } from "lucide-react";
-import { getFeedPosts } from "@/features/feed/utils/get-feed-posts";
-import { PostCard } from "@/features/feed/components/post-card";
-import { LoginButton } from "@/features/auth/components/login-button";
+"use client";
 
-export default async function FeedPage() {
-  const posts = await getFeedPosts();
+import { useEffect } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { X } from "lucide-react";
+import { useBuilderStore } from "@/core/store/builder-store";
+import { useRecentProjects } from "../hooks/use-recent-projects";
+import { cn } from "@/core/utils/cn";
+
+export function ProjectSidebar() {
+  const router = useRouter();
+  const user = useBuilderStore((s) => s.user);
+  const recentProjects = useBuilderStore((s) => s.recentProjects);
+  const isLoadingProjects = useBuilderStore((s) => s.isLoadingProjects);
+  const projectsError = useBuilderStore((s) => s.projectsError);
+  const highlightedProjectId = useBuilderStore((s) => s.highlightedProjectId);
+  const setSidebarOpen = useBuilderStore((s) => s.setProjectSidebarOpen);
+  const { fetchRecentProjects } = useRecentProjects();
+
+  const close = () => setSidebarOpen(false);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") close();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleProjectClick = (id: string) => {
+    close();
+    router.push(`/editor/${id}`);
+  };
 
   return (
-    <div className="max-w-2xl mx-auto p-4 flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">26visualbuilder</h1>
-        <div className="flex items-center gap-2">
-          <Link href="/editor">
-            <Button size="sm">
-              <Wand2 className="h-3.5 w-3.5 mr-1.5" />
-              Mở Editor
-            </Button>
+    <div className="fixed inset-0 z-50 flex">
+      <div className="flex-1 bg-black/30" onClick={close} />
+
+      <div className="w-[85vw] max-w-sm sm:w-80 bg-white h-full flex flex-col shadow-xl">
+        <div className="flex items-center justify-between p-4 border-b">
+          <span className="text-sm font-semibold">My Projects</span>
+          <button onClick={close} className="text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3">
+          {!user ? (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              Đăng nhập để xem project của bạn.
+            </p>
+          ) : isLoadingProjects ? (
+            <p className="text-sm text-muted-foreground text-center py-8">Đang tải...</p>
+          ) : projectsError ? (
+            <div className="text-center py-8">
+              <p className="text-sm text-red-500 mb-2">{projectsError}</p>
+              <button onClick={() => fetchRecentProjects()} className="text-xs text-primary underline">
+                Thử lại
+              </button>
+            </div>
+          ) : recentProjects.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">Chưa có project nào.</p>
+          ) : (
+            <div className="flex flex-col gap-1">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase px-1 pb-1">Recent</p>
+              {recentProjects.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => handleProjectClick(p.id)}
+                  className={cn(
+                    "text-left text-sm rounded-md px-3 py-2 hover:bg-muted flex items-center justify-between",
+                    p.id === highlightedProjectId && "bg-primary/10 border border-primary/40"
+                  )}
+                >
+                  <span className="truncate">{p.name}</span>
+                  {p.id === highlightedProjectId && (
+                    <span className="text-[10px] text-primary shrink-0 ml-2">✨ Just now</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="p-3 border-t">
+          <Link href="/projects" onClick={close} className="text-sm text-primary hover:underline">
+            View all projects →
           </Link>
-          <LoginButton />
         </div>
       </div>
-
-      {posts.length === 0 ? (
-        <p className="text-sm text-muted-foreground text-center py-12">
-          Chưa có bài đăng nào — hãy là người đầu tiên chia sẻ!
-        </p>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {posts.map((post) => (
-            <PostCard key={post.id} post={post} />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
-```
-
-## `src/app/posts/[postId]/page.tsx` — file mới, trang chi tiết
-
-```tsx
-import { notFound } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { createClient } from "@/core/supabase/server";
-import { getPageNamesInOrder } from "@/core/store/builder-store";
-import { TreeNode } from "@/core/types/builder.types";
-
-export default async function PostDetailPage({
-  params,
-}: {
-  params: Promise<{ postId: string }>;
-}) {
-  const { postId } = await params;
-  const supabase = await createClient();
-
-  const { data: post, error } = await supabase
-    .from("posts")
-    .select("id, name, description, tree_data, thumbnail_url, author_id, published_at, clone_count, is_active")
-    .eq("id", postId)
-    .single();
-
-  if (error || !post || !post.is_active) notFound();
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("display_name")
-    .eq("id", post.author_id)
-    .single();
-
-  const pageNames = getPageNamesInOrder(post.tree_data as TreeNode);
-
-  return (
-    <div className="max-w-2xl mx-auto p-4 flex flex-col gap-4">
-      <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground w-fit">
-        <ArrowLeft className="h-3.5 w-3.5" />
-        Quay lại Feed
-      </Link>
-
-      {post.thumbnail_url && (
-        <img src={post.thumbnail_url} alt={post.name} className="w-full rounded-lg border" />
-      )}
-
-      <div>
-        <h1 className="text-lg font-semibold">{post.name}</h1>
-        <p className="text-sm text-muted-foreground">bởi {profile?.display_name ?? "Ẩn danh"}</p>
-      </div>
-
-      {post.description && <p className="text-sm">{post.description}</p>}
-
-      <div>
-        <p className="text-xs font-medium text-muted-foreground uppercase mb-1">
-          Gồm {pageNames.length} trang
-        </p>
-        <ul className="text-sm flex flex-wrap gap-2">
-          {pageNames.map((name) => (
-            <li key={name} className="border rounded-full px-2.5 py-0.5 text-xs">{name}</li>
-          ))}
-        </ul>
-      </div>
-
-      <p className="text-xs text-muted-foreground">
-        Đăng ngày {new Date(post.published_at).toLocaleDateString("vi-VN")} · {post.clone_count} lượt clone
-      </p>
-
-      {/* Nút Clone — thuộc Giai đoạn 3 theo kế hoạch bạn vạch ra, chưa làm ở bước này */}
-    </div>
-  );
-}
-```
-
-## Patch `features/app-shell/components/app-shell.tsx`
-
-Thêm link quay lại Feed (trước giờ Editor không có đường về):
-```tsx
-// Thêm import:
-import { Newspaper } from "lucide-react";
-
-// Thêm vào hàng nút, trước "My Projects":
-<Link href="/">
-  <Button variant="outline" size="sm">
-    <Newspaper className="h-3.5 w-3.5 mr-1.5" />
-    Feed
-  </Button>
-</Link>
 ```
 
 ---
-**Không cần sửa** `src/app/projects/page.tsx` — `redirect("/")` khi chưa login giờ tự nhiên đưa về Feed công khai (hợp lý hơn cả trước, vì Feed có `LoginButton` sẵn), không phải sửa gì.
+**Đối chiếu nhanh Acceptance Criteria (mục 17 PRD):** Topbar ✅ (4 trang shell, ẩn ở Editor) · Sidebar ✅ (sort đúng, đóng 3 cách, responsive) · Clone ✅ (refresh list, count +1 có animation, highlight tạm, **không** tạo notification DB) · Regression: không đụng `clone_post()`, không đổi schema, không phá Editor/Feed/Post Detail (chỉ thêm layout bọc ngoài).
 
-**Test nhanh:** vào `/` → phải thấy Feed với ít nhất 1 card (bài bạn đã đăng), trái hiện đúng "1 trang: Home", phải hiện ảnh thumbnail. Bấm card → sang `/posts/<id>` → hiện đúng chi tiết. Bấm "Mở Editor" → sang `/editor`, vẫn đúng hành vi cũ (dựng từ đầu, không load project nào).
+**Test nhanh:** vào `/` (chưa mở sidebar) → sang 1 post → bấm Clone → phải thấy toast "✓ Added to your projects" hiện góc màn hình (không chặn thao tác), **không** bị điều hướng đi đâu cả, `☰` số tăng lên kèm `+1` nảy lên rồi biến mất sau ~1.8s. Mở sidebar → project vừa clone phải nằm **đầu danh sách**, có viền + "✨ Just now" — đợi ~2.5s, đóng mở lại sidebar → viền/badge phải biến mất, chỉ còn tên project bình thường.

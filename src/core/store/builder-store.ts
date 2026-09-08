@@ -15,6 +15,13 @@ export const COMPONENTS_FOLDER_ID = "components-folder";
 export const HOME_PAGE_ID = "home-page";
 const PROTECTED_IDS = new Set(["root", APP_FOLDER_ID, COMPONENTS_FOLDER_ID]);
 
+export interface RecentProject {
+  id: string;
+  name: string;
+  description: string | null;
+  thumbnail_url: string | null;
+  updated_at: string;
+}
 
 
 interface BuilderState {
@@ -61,8 +68,21 @@ interface BuilderState {
   draftPostTree: TreeNode | null;
   draftPostThumbnail: string | null;
   draftPostPageNames: string[];
+  recentProjects: RecentProject[];
+  projectCount: number;
+  projectsLoaded: boolean;
+  projectSidebarOpen: boolean;
+  highlightedProjectId: string | null;
+  isLoadingProjects: boolean;
+  projectsError: string | null;
   setDraftPost: (payload: { tree: TreeNode; thumbnail: string; pageNames: string[] }) => void;
   clearDraftPost: () => void;
+  setRecentProjects: (projects: RecentProject[], count: number) => void;
+  setProjectSidebarOpen: (open: boolean) => void;
+  setHighlightedProjectId: (id: string | null) => void;
+  setProjectsLoading: (loading: boolean) => void;
+  setProjectsError: (error: string | null) => void;
+  resetProjectCache: () => void;
 }
 
 export function findNode(node: TreeNode, id: string): TreeNode | null {
@@ -191,6 +211,13 @@ tree: createDefaultProjectTree(),
   draftPostTree: null,
   draftPostThumbnail: null,
   draftPostPageNames: [],
+  recentProjects: [],
+  projectCount: 0,
+  projectsLoaded: false,
+  projectSidebarOpen: false,
+  highlightedProjectId: null,
+  isLoadingProjects: false,
+  projectsError: null,
 
   setActiveNode: (id) => set({ activeNodeId: id }),
   setActivePage: (id) => set({ activePageId: id }),
@@ -480,6 +507,20 @@ setUser: (user) => set({ user }),
       activeNodeId: null,
       activePageId: findFirstPageId(tree), // tự tìm Page đầu tiên trong cây vừa nạp — hàm này đã có sẵn từ V1.9
       editMode: false,
+    }),
+  setRecentProjects: (recentProjects, count) =>
+    set({ recentProjects, projectCount: count, projectsLoaded: true }),
+  setProjectSidebarOpen: (projectSidebarOpen) => set({ projectSidebarOpen }),
+  setHighlightedProjectId: (highlightedProjectId) => set({ highlightedProjectId }),
+  setProjectsLoading: (isLoadingProjects) => set({ isLoadingProjects }),
+  setProjectsError: (projectsError) => set({ projectsError }),
+  resetProjectCache: () =>
+    set({
+      recentProjects: [],
+      projectCount: 0,
+      projectsLoaded: false,
+      isLoadingProjects: false,
+      projectsError: null,
     }),
 
   

@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/core/supabase/server";
 import { getPageNamesInOrder } from "@/core/store/builder-store";
 import { TreeNode } from "@/core/types/builder.types";
+import { CloneButton } from "@/features/publish-post/components/clone-button";
 
 export default async function PostDetailPage({
   params,
@@ -62,7 +63,7 @@ export default async function PostDetailPage({
         Đăng ngày {new Date(post.published_at).toLocaleDateString("vi-VN")} · {post.clone_count} lượt clone
       </p>
 
-      {/* Nút Clone — thuộc Giai đoạn 3 theo kế hoạch bạn vạch ra, chưa làm ở bước này */}
+      <CloneButton postId={post.id} />
     </div>
   );
 }

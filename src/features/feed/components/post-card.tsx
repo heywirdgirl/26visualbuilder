@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { FeedPost } from "../utils/get-feed-posts";
+import { CloneButton } from "@/features/publish-post/components/clone-button";
 
 export function PostCard({ post }: { post: FeedPost }) {
   return (
@@ -24,6 +25,8 @@ export function PostCard({ post }: { post: FeedPost }) {
             )}
           </ul>
         </div>
+
+        <CloneButton postId={post.id} className="mt-auto w-fit" />
       </div>
 
       <div className="w-3/5 bg-muted">
