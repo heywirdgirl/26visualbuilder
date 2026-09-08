@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useBuilderStore } from "@/core/store/builder-store";
@@ -39,14 +40,16 @@ export function LoginButton() {
 
   return (
     <div className="flex items-center gap-2 rounded-md border bg-white/80 px-2 py-2 shadow-sm">
-      <Avatar size="sm">
-        {avatarUrl ? <AvatarImage src={avatarUrl} alt={displayName} /> : null}
-        <AvatarFallback>{fallback}</AvatarFallback>
-      </Avatar>
-      <div className="min-w-0">
-        <p className="truncate text-[11px] font-medium">{displayName}</p>
-        <p className="truncate text-[10px] text-muted-foreground">{user.email ?? "No email"}</p>
-      </div>
+      <Link href="/profile" className="flex min-w-0 items-center gap-2">
+        <Avatar size="sm">
+          {avatarUrl ? <AvatarImage src={avatarUrl} alt={displayName} /> : null}
+          <AvatarFallback>{fallback}</AvatarFallback>
+        </Avatar>
+        <div className="min-w-0">
+          <p className="truncate text-[11px] font-medium">{displayName}</p>
+          <p className="truncate text-[10px] text-muted-foreground">{user.email ?? "No email"}</p>
+        </div>
+      </Link>
       <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => void signOut()} disabled={isSigningOut}>
         {isSigningOut ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
       </Button>
