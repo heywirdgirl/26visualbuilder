@@ -1,31 +1,52 @@
+import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { CloneButton } from "@/features/publish-post/components/clone-button";
 import { getPageNamesInOrder } from "@/core/store/builder-store";
 import { TreeNode } from "@/core/types/builder.types";
-import { createClient } from "@/core/supabase/server";
-import { resolveProfileByUsername } from "@/features/profile/utils/resolve-profile-by-username";
+import { CloneButton } from "@/features/publish-post/components/clone-button";
+import { SharePost } from "@/features/share-post/components/share-post";
+import { getPostUrl, getFallbackOgImageUrl } from "@/core/utils/site-url";
+import { getPostDetailData } from "@/features/post-detail/utils/get-post-detail-data";
 
-export default async function PostDetailPage({
-  params,
-}: {
+interface PageParams {
   params: Promise<{ username: string; slug: string }>;
-}) {
+}
+
+export async function generateMetadata({ params }: PageParams): Promise<Metadata> {
   const { username, slug } = await params;
-  const profile = await resolveProfileByUsername(username, (newUsername) => `/${newUsername}/${slug}`);
+  const { profile, post } = await getPostDetailData(username, slug);
 
-  const supabase = await createClient();
-  const { data: post, error } = await supabase
-    .from("posts")
-    .select("id, name, description, tree_data, thumbnail_url, author_id, published_at, clone_count, is_active")
-    .eq("author_id", profile.id)
-    .eq("slug", slug)
-    .single();
+  const canonicalUrl = getPostUrl(profile.username, slug);
+  const authorName = profile.display_name ?? profile.username;
+  const description = post.description || "A visual creation published with 26VisualBuilder.";
+  const imageUrl = post.thumbnail_url || getFallbackOgImageUrl();
 
-  if (error || !post || !post.is_active) notFound();
+  return {
+    title: `${post.name} — ${authorName} | 26VisualBuilder`,
+    description,
+    alternates: { canonical: canonicalUrl },
+    openGraph: {
+      title: post.name,
+      description,
+      url: canonicalUrl,
+      type: "website",
+      images: [{ url: imageUrl }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: post.name,
+      description,
+      images: [imageUrl],
+    },
+  };
+}
+
+export default async function PostDetailPage({ params }: PageParams) {
+  const { username, slug } = await params;
+  const { profile, post } = await getPostDetailData(username, slug);
 
   const pageNames = getPageNamesInOrder(post.tree_data as TreeNode);
+  const canonicalUrl = getPostUrl(profile.username, slug);
 
   return (
     <div className="max-w-2xl mx-auto p-4 flex flex-col gap-4">
@@ -62,7 +83,10 @@ export default async function PostDetailPage({
         Đăng ngày {new Date(post.published_at).toLocaleDateString("vi-VN")} · {post.clone_count} lượt clone
       </p>
 
-      <CloneButton postId={post.id} />
+      <div className="flex items-center gap-2">
+        <CloneButton postId={post.id} />
+        <SharePost title={post.name} canonicalUrl={canonicalUrl} />
+      </div>
     </div>
   );
 }
