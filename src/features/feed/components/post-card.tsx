@@ -1,11 +1,15 @@
 import Link from "next/link";
 import { FeedPost } from "../utils/get-feed-posts";
 import { CloneButton } from "@/features/publish-post/components/clone-button";
+import { SharePost } from "@/features/share-post/components/share-post";
+import { getPostUrl } from "@/core/utils/site-url";
 
 export function PostCard({ post }: { post: FeedPost }) {
+  const canonicalUrl = getPostUrl(post.authorUsername, post.slug);
+
   return (
     <Link
-      href={`/posts/${post.id}`}
+      href={`/${post.authorUsername}/${post.slug}`}
       className="flex border rounded-lg overflow-hidden hover:shadow-md transition-shadow bg-white"
     >
       <div className="w-2/5 p-3 flex flex-col gap-1.5 min-w-0">
@@ -26,7 +30,10 @@ export function PostCard({ post }: { post: FeedPost }) {
           </ul>
         </div>
 
-        <CloneButton postId={post.id} className="mt-auto w-fit" />
+        <div className="mt-auto flex items-center gap-2">
+          <CloneButton postId={post.id} className="w-fit" />
+          <SharePost title={post.name} canonicalUrl={canonicalUrl} stopPropagation />
+        </div>
       </div>
 
       <div className="w-3/5 bg-muted">

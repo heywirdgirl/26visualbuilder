@@ -5,20 +5,26 @@ import { TreeNode } from "@/core/types/builder.types";
 export interface FeedPost {
   id: string;
   name: string;
+  slug: string;
   thumbnailUrl: string | null;
   pageNames: string[];
+  authorUsername: string;
   authorName: string;
   publishedAt: string;
 }
 
-export async function getFeedPosts(): Promise<FeedPost[]> {
+export async function getFeedPosts(options?: { authorId?: string }): Promise<FeedPost[]> {
   const supabase = await createClient();
 
-  const { data: posts, error } = await supabase
+  let query = supabase
     .from("posts")
-    .select("id, name, tree_data, thumbnail_url, author_id, published_at")
+    .select("id, name, slug, tree_data, thumbnail_url, author_id, published_at")
     .eq("is_active", true)
     .order("published_at", { ascending: false });
+
+  if (options?.authorId) query = query.eq("author_id", options.authorId);
+
+  const { data: posts, error } = await query;
 
   if (error || !posts) {
     console.error("[feed] Lỗi tải danh sách bài đăng:", error);
@@ -30,17 +36,22 @@ export async function getFeedPosts(): Promise<FeedPost[]> {
   const authorIds = Array.from(new Set(posts.map((p) => p.author_id)));
   const { data: profiles } = await supabase
     .from("profiles")
-    .select("id, display_name")
+    .select("id, username, display_name")
     .in("id", authorIds);
 
   const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
 
-  return posts.map((post) => ({
-    id: post.id,
-    name: post.name,
-    thumbnailUrl: post.thumbnail_url,
-    pageNames: getPageNamesInOrder(post.tree_data as TreeNode),
-    authorName: profileMap.get(post.author_id)?.display_name ?? "Ẩn danh",
-    publishedAt: post.published_at,
-  }));
+  return posts.map((post) => {
+    const profile = profileMap.get(post.author_id);
+    return {
+      id: post.id,
+      name: post.name,
+      slug: post.slug,
+      thumbnailUrl: post.thumbnail_url,
+      pageNames: getPageNamesInOrder(post.tree_data as TreeNode),
+      authorUsername: profile?.username ?? "unknown",
+      authorName: profile?.display_name ?? "Ẩn danh",
+      publishedAt: post.published_at,
+    };
+  });
 }
