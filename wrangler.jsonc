@@ -12,7 +12,8 @@
     { "binding": "THUMBNAILS_BUCKET", "bucket_name": "26visualbuilder-image" }
   ],
   "vars": {
-    "R2_PUBLIC_URL": "https://pub-ca360487984341cea60a3306e254feb1.r2.dev"
+    "R2_PUBLIC_URL": "https://pub-ca360487984341cea60a3306e254feb1.r2.dev",
+    "SITE_URL": "https://26visualbuilder.awsmydream.workers.dev"
   },
   "observability": {
     "enabled": true,
