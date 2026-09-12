@@ -7,6 +7,8 @@ import { CloneButton } from "@/features/publish-post/components/clone-button";
 import { SharePost } from "@/features/share-post/components/share-post";
 import { getPostUrl, getFallbackOgImageUrl } from "@/core/utils/site-url";
 import { getPostDetailData } from "@/features/post-detail/utils/get-post-detail-data";
+import { getPostComments } from "@/features/comments/utils/get-post-comments";
+import { CommentsSection } from "@/features/comments/components/comments-section";
 
 interface PageParams {
   params: Promise<{ username: string; slug: string }>;
@@ -47,6 +49,7 @@ export default async function PostDetailPage({ params }: PageParams) {
 
   const pageNames = getPageNamesInOrder(post.tree_data as TreeNode);
   const canonicalUrl = getPostUrl(profile.username, slug);
+  const { comments, totalCount, hasMore } = await getPostComments(post.id, 0);
 
   return (
     <div className="max-w-2xl mx-auto p-4 flex flex-col gap-4">
@@ -86,6 +89,15 @@ export default async function PostDetailPage({ params }: PageParams) {
       <div className="flex items-center gap-2">
         <CloneButton postId={post.id} />
         <SharePost title={post.name} canonicalUrl={canonicalUrl} />
+      </div>
+
+      <div className="border-t pt-4">
+        <CommentsSection
+          postId={post.id}
+          initialComments={comments}
+          initialTotalCount={totalCount}
+          initialHasMore={hasMore}
+        />
       </div>
     </div>
   );
