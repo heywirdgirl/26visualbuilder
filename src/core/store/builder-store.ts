@@ -561,6 +561,22 @@ export function getPageNamesInOrder(tree: TreeNode): string[] {
   return collectPageNames(tree);
 }
 
+function collectPageNodes(node: TreeNode, acc: TreeNode[] = []): TreeNode[] {
+  if (node.type === SYSTEM_NODE_IDS.page) {
+    acc.push(node);
+    return acc;
+  }
+
+  node.children.forEach((child) => collectPageNodes(child, acc));
+  return acc;
+}
+
+export function getPageNodes(tree: TreeNode): TreeNode[] {
+  const appFolder = tree.children.find((child) => child.id === APP_FOLDER_ID);
+  if (!appFolder) return [];
+  return collectPageNodes(appFolder);
+}
+
 // Component đang chứa parentId (nếu có) — dùng để ẩn/chặn tự-instance-vào-chính-mình
 // ngay ở UI, trước khi Store phải tự chặn vòng lặp ở tầng data.
 export function useAncestorComponentId(nodeId: string | null): string | null {

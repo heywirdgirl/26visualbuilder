@@ -2,6 +2,7 @@ import Link from "next/link";
 import { FeedPost } from "../utils/get-feed-posts";
 import { CloneButton } from "@/features/publish-post/components/clone-button";
 import { SharePost } from "@/features/share-post/components/share-post";
+import { ReadonlyNodeTree } from "@/features/node-tree-preview/components/readonly-node-tree";
 import { getPostUrl } from "@/core/utils/site-url";
 
 export function PostCard({ post }: { post: FeedPost }) {
@@ -16,18 +17,8 @@ export function PostCard({ post }: { post: FeedPost }) {
         <p className="text-sm font-semibold truncate">{post.name}</p>
         <p className="text-xs text-muted-foreground truncate">bởi {post.authorName}</p>
 
-        <div className="mt-1">
-          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
-            {post.pageNames.length} trang
-          </p>
-          <ul className="text-xs text-foreground/80 mt-0.5">
-            {post.pageNames.slice(0, 4).map((name) => (
-              <li key={name} className="truncate">· {name}</li>
-            ))}
-            {post.pageNames.length > 4 && (
-              <li className="text-muted-foreground">+ {post.pageNames.length - 4} trang khác</li>
-            )}
-          </ul>
+        <div className="mt-1 border rounded-md p-1.5 bg-muted/30">
+          <ReadonlyNodeTree tree={post.treeData} maxHeight={160} />
         </div>
 
         <div className="mt-auto flex items-center gap-2">
