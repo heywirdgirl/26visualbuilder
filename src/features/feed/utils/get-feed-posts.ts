@@ -1,5 +1,4 @@
 import { createClient } from "@/core/supabase/server";
-import { getPageNamesInOrder } from "@/core/store/builder-store";
 import { TreeNode } from "@/core/types/builder.types";
 
 export interface FeedPost {
@@ -7,7 +6,7 @@ export interface FeedPost {
   name: string;
   slug: string;
   thumbnailUrl: string | null;
-  pageNames: string[];
+  treeData: TreeNode;
   authorUsername: string;
   authorName: string;
   publishedAt: string;
@@ -48,7 +47,7 @@ export async function getFeedPosts(options?: { authorId?: string }): Promise<Fee
       name: post.name,
       slug: post.slug,
       thumbnailUrl: post.thumbnail_url,
-      pageNames: getPageNamesInOrder(post.tree_data as TreeNode),
+      treeData: post.tree_data as TreeNode,
       authorUsername: profile?.username ?? "unknown",
       authorName: profile?.display_name ?? "Ẩn danh",
       publishedAt: post.published_at,
