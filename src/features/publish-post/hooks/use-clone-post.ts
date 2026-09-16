@@ -13,18 +13,19 @@ export function useClonePost() {
   const setHighlightedProjectId = useBuilderStore((s) => s.setHighlightedProjectId);
   const { fetchRecentProjects } = useRecentProjects();
 
-  const clonePost = async (postId: string) => {
+  const clonePost = async (postId: string): Promise<boolean> => {
     setIsCloning(true);
     try {
       const res = await clonePostAction(postId);
       if (!res.success) {
         toast.error(res.error ?? "Clone thất bại.");
-        return;
+        return false;
       }
       toast.success("✓ Added to your projects");
       await fetchRecentProjects();
       setHighlightedProjectId(res.projectId);
       setTimeout(() => setHighlightedProjectId(null), HIGHLIGHT_DURATION_MS);
+      return true;
     } finally {
       setIsCloning(false);
     }

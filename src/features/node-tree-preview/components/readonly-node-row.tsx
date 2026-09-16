@@ -48,7 +48,7 @@ export function ReadonlyNodeRow({
   fullTree: TreeNode;
   depth: number;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
 
   const def = getNodeDefinition(node.type);
   const hasChildren = def?.nodeKind !== "component-instance" && node.children.length > 0;

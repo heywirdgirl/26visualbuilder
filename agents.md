@@ -1,303 +1,483 @@
-## Patch `core/store/builder-store.ts`
-
-Thêm hàm mới (đặt cạnh `getPageNamesInOrder`, giữ nguyên hàm cũ vì `Datastructure.md`/nơi khác có thể còn tham chiếu tên trang thuần — không phá gì đang chạy tốt):
+## Cập nhật `features/feed/utils/get-feed-posts.ts` — full file
 
 ```typescript
-import { APP_FOLDER_ID } from "./builder-store"; // đã có sẵn export trong chính file này, không cần import — chỉ ghi chú vị trí hằng số dùng bên dưới
+import { createClient } from "@/core/supabase/server";
+import { TreeNode } from "@/core/types/builder.types";
 
-// Tìm folder App/ trong cây, trả về nguyên TreeNode của từng Page bên trong (đệ quy qua
-// Folder lồng nhau nếu có) — khác getPageNamesInOrder() ở chỗ giữ NGUYÊN cấu trúc con
-// (html/shadcn/Component Instance thật), không làm phẳng chỉ còn mỗi cái tên.
-function collectPageNodes(node: TreeNode, acc: TreeNode[] = []): TreeNode[] {
-  if (node.type === SYSTEM_NODE_IDS.page) {
-    acc.push(node);
-    return acc; // Page không thể chứa Page khác (Node Rules) — không cần đệ quy sâu hơn
-  }
-  node.children.forEach((c) => collectPageNodes(c, acc));
-  return acc;
-}
-
-export function getPageNodes(tree: TreeNode): TreeNode[] {
-  const appFolder = tree.children.find((c) => c.id === APP_FOLDER_ID);
-  if (!appFolder) return [];
-  return collectPageNodes(appFolder);
-}
-```
-
-## Patch `features/feed/utils/get-feed-posts.ts`
-
-Đổi `pageNames: string[]` → `pageNodes: TreeNode[]` trong interface và cách tính:
-
-```typescript
-// Đổi:
-import { getPageNamesInOrder } from "@/core/store/builder-store";
-// Thành:
-import { getPageNodes } from "@/core/store/builder-store";
-
-// Đổi interface:
 export interface FeedPost {
   id: string;
   name: string;
   slug: string;
   thumbnailUrl: string | null;
-  pageNodes: TreeNode[]; // 👈 đổi từ pageNames: string[]
+  treeData: TreeNode;
   authorUsername: string;
   authorName: string;
   publishedAt: string;
+  cloneCount: number;
+  likeCount: number;
+  isLiked: boolean;
 }
 
-// Đổi trong hàm map cuối file:
-return posts.map((post) => {
-  const profile = profileMap.get(post.author_id);
-  return {
-    id: post.id,
-    name: post.name,
-    slug: post.slug,
-    thumbnailUrl: post.thumbnail_url,
-    pageNodes: getPageNodes(post.tree_data as TreeNode), // 👈 đổi từ getPageNamesInOrder
-    authorUsername: profile?.username ?? "unknown",
-    authorName: profile?.display_name ?? "Ẩn danh",
-    publishedAt: post.published_at,
-  };
+export async function getFeedPosts(options?: { authorId?: string }): Promise<FeedPost[]> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  let query = supabase
+    .from("posts")
+    .select("id, name, slug, tree_data, thumbnail_url, author_id, published_at, clone_count")
+    .eq("is_active", true)
+    .order("published_at", { ascending: false });
+
+  if (options?.authorId) query = query.eq("author_id", options.authorId);
+
+  const { data: posts, error } = await query;
+  if (error || !posts) {
+    console.error("[feed] Lỗi tải danh sách bài đăng:", error);
+    return [];
+  }
+  if (posts.length === 0) return [];
+
+  const postIds = posts.map((p) => p.id);
+  const authorIds = Array.from(new Set(posts.map((p) => p.author_id)));
+
+  // Batch cho CẢ TRANG cùng lúc — không phải 1 query riêng mỗi post (tránh N+1).
+  // post_likes không hỗ trợ COUNT gộp theo post_id qua PostgREST trực tiếp, nên lấy
+  // nguyên rows trong batch rồi đếm bằng JS — cùng kỹ thuật đã dùng cho badge
+  // "Used this project" ở Comments (Set/Map dựng từ 1 lần fetch, không query lặp lại).
+  const [{ data: profiles }, { data: allLikes }, { data: userLikes }] = await Promise.all([
+    supabase.from("profiles").select("id, username, display_name").in("id", authorIds),
+    supabase.from("post_likes").select("post_id").in("post_id", postIds),
+    user
+      ? supabase.from("post_likes").select("post_id").eq("user_id", user.id).in("post_id", postIds)
+      : Promise.resolve({ data: [] as { post_id: string }[] }),
+  ]);
+
+  const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
+
+  const likeCountMap = new Map<string, number>();
+  (allLikes ?? []).forEach((l) => {
+    likeCountMap.set(l.post_id, (likeCountMap.get(l.post_id) ?? 0) + 1);
+  });
+
+  const likedPostIds = new Set((userLikes ?? []).map((l) => l.post_id));
+
+  return posts.map((post) => {
+    const profile = profileMap.get(post.author_id);
+    return {
+      id: post.id,
+      name: post.name,
+      slug: post.slug,
+      thumbnailUrl: post.thumbnail_url,
+      treeData: post.tree_data as TreeNode,
+      authorUsername: profile?.username ?? "unknown",
+      authorName: profile?.display_name ?? "Ẩn danh",
+      publishedAt: post.published_at,
+      cloneCount: post.clone_count,
+      likeCount: likeCountMap.get(post.id) ?? 0,
+      isLiked: likedPostIds.has(post.id),
+    };
+  });
+}
+```
+
+## Cập nhật `features/post-detail/utils/get-post-detail-data.ts` — full file
+
+```typescript
+import { cache } from "react";
+import { notFound } from "next/navigation";
+import { createClient } from "@/core/supabase/server";
+import { resolveProfileByUsername } from "@/features/profile/utils/resolve-profile-by-username";
+
+export const getPostDetailData = cache(async (username: string, slug: string) => {
+  const profile = await resolveProfileByUsername(username, (u) => `/${u}/${slug}`);
+
+  const supabase = await createClient();
+  const { data: post, error } = await supabase
+    .from("posts")
+    .select("id, name, description, tree_data, thumbnail_url, author_id, published_at, clone_count, is_active")
+    .eq("author_id", profile.id)
+    .eq("slug", slug)
+    .single();
+
+  if (error || !post || !post.is_active) notFound();
+
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // Chỉ 1 post ở đây (khác Feed — batch nhiều post cùng lúc) nên dùng thẳng
+  // { count: "exact", head: true } của PostgREST — đúng công cụ cho đúng quy mô,
+  // không cần fetch rows rồi đếm tay như bên get-feed-posts.ts.
+  const { count: likeCount } = await supabase
+    .from("post_likes")
+    .select("*", { count: "exact", head: true })
+    .eq("post_id", post.id);
+
+  let isLiked = false;
+  if (user) {
+    const { data: likeRow } = await supabase
+      .from("post_likes")
+      .select("post_id")
+      .eq("post_id", post.id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    isLiked = !!likeRow;
+  }
+
+  return { profile, post, likeCount: likeCount ?? 0, isLiked };
 });
 ```
 
-## Patch `src/app/(shell)/[username]/[slug]/page.tsx`
-
-```typescript
-// Đổi:
-import { getPageNamesInOrder } from "@/core/store/builder-store";
-// Thành:
-import { getPageNodes } from "@/core/store/builder-store";
-
-// Đổi dòng tính toán trong PostDetailPage:
-const pageNames = getPageNamesInOrder(post.tree_data as TreeNode);
-// Thành:
-const pageNodes = getPageNodes(post.tree_data as TreeNode);
-```
-
-**Chưa sửa phần JSX render** (`{pageNames.map(...)}`) ở cả `PostCard` và `PostDetailPage` — đúng dự kiến, đó là việc của **Phase 3** khi `ReadonlyNodeTree` đã có để thay thế. Tạm thời code sẽ báo lỗi type ở 2 chỗ đó (biến `pageNames` không còn tồn tại) — bình thường, sẽ hết khi Phase 3 xong.
+**Lưu ý:** `PostDetailPage` hiện đang destructure `const { profile, post } = await getPostDetailData(...)` — thêm `likeCount`/`isLiked` vào phần này **không phá gì cả** (backward compatible, chỉ thêm field mới vào object trả về), nhưng bạn cần đổi thành `const { profile, post, likeCount, isLiked } = ...` khi tới **Phase 3** để thật sự dùng 2 giá trị mới này — chưa cần sửa `PostDetailPage`/`PostCard` ở bước này.
 
 ---
-# Phase 2 
+**Test nhanh (qua console/log tạm, chưa có UI):** thêm tạm 1 vài row vào `post_likes` cho 1-2 post test → gọi `getFeedPosts()` → phải thấy `cloneCount`/`likeCount` đúng số thật, `isLiked` đúng `true`/`false` tuỳ tài khoản đang đăng nhập có nằm trong `post_likes` của post đó không. Gọi `getPostDetailData(username, slug)` cho đúng 1 post đó → `likeCount`/`isLiked` phải khớp y hệt kết quả từ Feed (2 cách tính khác nhau nhưng phải ra cùng đáp số).
 
-1 điều chỉnh nhỏ cho Phase 1 trước khi vào Phase 2 — phát hiện khi thiết kế component: `getPageNodes()` chỉ trả về nhánh `App/`, nhưng **Component Instance nằm trong Page cần tra tên thật từ nhánh `Components/`** (sibling của `App/`, không nằm trong subtree Page) — muốn hiện đúng tên "Header (Instance)" như Editor vẫn làm, `ReadonlyNodeTree` cần **toàn bộ cây**, không chỉ mảng Page đã cắt rời. Đổi `FeedPost.pageNodes: TreeNode[]` → `FeedPost.treeData: TreeNode` (nguyên snapshot) — `getPageNodes()` vẫn giữ nguyên, chỉ chuyển việc gọi nó vào trong `ReadonlyNodeTree` chứ không gọi trước ở tầng fetch data.
+# phase 2
+
+## File mới: `features/likes/actions/toggle-like-action.ts`
+
+```typescript
+"use server";
+
+import { createClient } from "@/core/supabase/server";
+
+export async function toggleLikeAction(postId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Cần đăng nhập để thích bài viết." };
+
+  const { data: existing } = await supabase
+    .from("post_likes")
+    .select("post_id")
+    .eq("post_id", postId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabase
+      .from("post_likes")
+      .delete()
+      .eq("post_id", postId)
+      .eq("user_id", user.id);
+    if (error) {
+      console.error("[likes] Unlike thất bại:", error);
+      return { error: "Không thể bỏ thích — thử lại." };
+    }
+  } else {
+    const { error } = await supabase
+      .from("post_likes")
+      .insert({ post_id: postId, user_id: user.id });
+    // primary key (post_id, user_id) tự chặn duplicate ở tầng DB — nếu race condition
+    // hiếm gặp (bấm 2 lần liên tiếp quá nhanh) khiến insert trùng, coi là "đã like",
+    // không cần báo lỗi khó hiểu cho người dùng.
+    if (error && error.code !== "23505") {
+      console.error("[likes] Like thất bại:", error);
+      return { error: "Không thể thích bài viết — thử lại." };
+    }
+  }
+
+  // Đếm lại SỐ THẬT ngay sau khi ghi — không tự +1/-1 trên client, tránh lệch nếu có
+  // request khác xảy ra đồng thời (đúng nguyên tắc đã áp dụng cho projectCount ở Global Shell).
+  const { count } = await supabase
+    .from("post_likes")
+    .select("*", { count: "exact", head: true })
+    .eq("post_id", postId);
+
+  return { success: true as const, isLiked: !existing, likeCount: count ?? 0 };
+}
+```
+
+## File mới: `features/likes/hooks/use-toggle-like.ts`
+
+```typescript
+"use client";
+
+import { useState } from "react";
+import { toast } from "sonner";
+import { useBuilderStore } from "@/core/store/builder-store";
+import { toggleLikeAction } from "../actions/toggle-like-action";
+
+export function useToggleLike(postId: string, initialIsLiked: boolean, initialLikeCount: number) {
+  const user = useBuilderStore((s) => s.user);
+  const [isLiked, setIsLiked] = useState(initialIsLiked);
+  const [likeCount, setLikeCount] = useState(initialLikeCount);
+  const [isToggling, setIsToggling] = useState(false);
+
+  const toggleLike = async () => {
+    if (!user) {
+      toast.error("Đăng nhập để thích bài viết.");
+      return;
+    }
+    if (isToggling) return;
+
+    // Optimistic update — Like cần phản hồi tức thì (không giống Clone, vốn đã có
+    // state "Cloning..." hợp lý để chờ). Rollback lại nếu server trả lỗi.
+    const previousLiked = isLiked;
+    const previousCount = likeCount;
+    setIsLiked(!previousLiked);
+    setLikeCount(previousLiked ? previousCount - 1 : previousCount + 1);
+    setIsToggling(true);
+
+    try {
+      const res = await toggleLikeAction(postId);
+      if (!res.success) {
+        setIsLiked(previousLiked);
+        setLikeCount(previousCount);
+        toast.error(res.error ?? "Không thể thích bài viết.");
+        return;
+      }
+      // Đồng bộ lại đúng số thật từ server — phòng trường hợp có like/unlike khác
+      // xảy ra song song trong lúc đang chờ optimistic update ở trên.
+      setIsLiked(res.isLiked);
+      setLikeCount(res.likeCount);
+    } catch (err) {
+      setIsLiked(previousLiked);
+      setLikeCount(previousCount);
+      console.error("[likes] toggleLike thất bại:", err);
+      toast.error("Không thể thích bài viết.");
+    } finally {
+      setIsToggling(false);
+    }
+  };
+
+  return { isLiked, likeCount, isToggling, toggleLike };
+}
+```
+
+---
+**Test nhanh (chưa có UI nút Like — Phase 3):** gọi tạm `toggleLikeAction(postId)` qua 1 nút test bất kỳ hoặc console (Server Action gọi được trực tiếp trong Client Component) → lần 1 phải trả `isLiked: true`, `likeCount` tăng 1; gọi lại lần 2 với cùng `postId` → phải trả `isLiked: false`, giảm về đúng số cũ. Kiểm tra Table Editor → `post_likes` phải có/mất đúng 1 row tương ứng, không tạo trùng dù bấm nhanh liên tục nhiều lần.
+
+# phase 3
+
+Trước khi vào code, 1 khoảng trống dữ liệu cần vá: `get-feed-posts.ts` (Phase 1) chưa hề lấy **số lượng comment** — PRD yêu cầu `💬 4` hiện ngay trên Feed Card, không chỉ ở Post Detail. Thêm 1 batch query nữa theo đúng kỹ thuật đã dùng cho Like (đếm bằng JS từ 1 lần fetch, không N+1).
+
+**1 quyết định dọn dẹp:** dòng "· N lượt clone" cũ trong Post Detail sẽ **bỏ** — trùng lặp thông tin với `⧉ N` trong stats row mới, hiện 2 nơi cùng 1 số dễ gây lệch nhìn (VD Clone ngay lúc đang xem, 1 nơi cập nhật 1 nơi không).
 
 ## Patch `features/feed/utils/get-feed-posts.ts`
 
+Thêm vào interface:
 ```typescript
-// Đổi:
-import { getPageNodes } from "@/core/store/builder-store";
-
 export interface FeedPost {
-  id: string;
-  name: string;
-  slug: string;
-  thumbnailUrl: string | null;
-  pageNodes: TreeNode[];
-  authorUsername: string;
-  authorName: string;
-  publishedAt: string;
+  // ...giữ nguyên các field cũ
+  commentCount: number; // 👈 thêm
 }
-// ...
-pageNodes: getPageNodes(post.tree_data as TreeNode),
-
-// Thành:
-export interface FeedPost {
-  id: string;
-  name: string;
-  slug: string;
-  thumbnailUrl: string | null;
-  treeData: TreeNode; // nguyên snapshot — cần cả nhánh Components/ để resolve tên thật
-                       // của Component Instance, ReadonlyNodeTree tự gọi getPageNodes() bên trong
-  authorUsername: string;
-  authorName: string;
-  publishedAt: string;
-}
-// ...
-treeData: post.tree_data as TreeNode,
 ```
 
-(Bỏ import `getPageNodes` khỏi file này — không còn dùng trực tiếp ở đây nữa.)
-
-## Patch `src/app/(shell)/[username]/[slug]/page.tsx`
-
+Thêm batch query (đặt cạnh khối `Promise.all` đã có ở Phase 1):
 ```typescript
-// Đổi:
-import { getPageNodes } from "@/core/store/builder-store";
-// ...
-const pageNodes = getPageNodes(post.tree_data as TreeNode);
-// Thành: xoá cả 2 dòng — Phase 3 sẽ truyền thẳng post.tree_data vào ReadonlyNodeTree
+const { data: allComments } = await supabase
+  .from("comments")
+  .select("post_id")
+  .in("post_id", postIds);
+
+const commentCountMap = new Map<string, number>();
+(allComments ?? []).forEach((c) => {
+  commentCountMap.set(c.post_id, (commentCountMap.get(c.post_id) ?? 0) + 1);
+});
 ```
 
-## File mới: `features/node-tree-preview/components/readonly-node-row.tsx`
+Thêm vào object trả về cuối hàm:
+```typescript
+commentCount: commentCountMap.get(post.id) ?? 0,
+```
+
+## Patch `features/publish-post/hooks/use-clone-post.ts`
+
+Đổi `clonePost` trả về `boolean` — để `CloneButton` biết chính xác có nên bump số liệu/hiện "✓ Cloned" hay không:
+```typescript
+const clonePost = async (postId: string): Promise<boolean> => {
+  setIsCloning(true);
+  try {
+    const res = await clonePostAction(postId);
+    if (!res.success) {
+      toast.error(res.error ?? "Clone thất bại.");
+      return false; // 👈 đổi từ "return;"
+    }
+    toast.success("✓ Added to your projects");
+    await fetchRecentProjects();
+    setHighlightedProjectId(res.projectId);
+    setTimeout(() => setHighlightedProjectId(null), HIGHLIGHT_DURATION_MS);
+    return true; // 👈 thêm
+  } finally {
+    setIsCloning(false);
+  }
+};
+```
+
+## Cập nhật `features/publish-post/components/clone-button.tsx` — full file
 
 ```tsx
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Folder, FileText, Component as ComponentIcon } from "lucide-react";
-import { TreeNode } from "@/core/types/builder.types";
-import { getNodeDefinition } from "@/core/registry/node-registry";
-import { SYSTEM_NODE_IDS } from "@/core/registry/system-nodes";
-import { findNode } from "@/core/store/builder-store";
-import { cn } from "@/core/utils/cn";
+import { Button } from "@/components/ui/button";
+import { Copy, Check, Loader2 } from "lucide-react";
+import { useClonePost } from "../hooks/use-clone-post";
 
-function useDisplayName(node: TreeNode, fullTree: TreeNode): string {
-  const def = getNodeDefinition(node.type);
+const CLONED_STATE_DURATION_MS = 2000;
 
-  if (node.type === SYSTEM_NODE_IDS.componentInstance) {
-    const referenced = node.referenceId ? findNode(fullTree, node.referenceId) : null;
-    const refName = (referenced?.props as { name?: string })?.name;
-    return refName ? `${refName} (Instance)` : "Component Instance (lỗi tham chiếu)";
-  }
-
-  const nameProp = (node.props as { name?: string })?.name;
-  return nameProp ?? def?.title ?? node.type;
-}
-
-function NodeIcon({ node }: { node: TreeNode }) {
-  const def = getNodeDefinition(node.type);
-  const cls = "h-3.5 w-3.5 shrink-0";
-
-  switch (def?.nodeKind) {
-    case "folder":
-      return <Folder className={cn(cls, "text-muted-foreground")} />;
-    case "page":
-      return <FileText className={cn(cls, "text-blue-600")} />;
-    case "component":
-      return <ComponentIcon className={cn(cls, "text-purple-600")} />;
-    case "component-instance":
-      return <ComponentIcon className={cn(cls, "text-purple-400")} />;
-    default:
-      return <span className={cls} />;
-  }
-}
-
-export function ReadonlyNodeRow({
-  node,
-  fullTree,
-  depth,
+export function CloneButton({
+  postId,
+  className,
+  onCloned,
 }: {
-  node: TreeNode;
-  fullTree: TreeNode;
-  depth: number;
+  postId: string;
+  className?: string;
+  onCloned?: () => void; // PostActionsBar dùng để bump số ⧉ trong stats row
 }) {
-  // Mặc định thu gọn MỌI cấp — đúng quyết định "overflow" đã chốt: Preview không tự
-  // phình to, người xem tự bấm mở nhánh họ muốn xem.
-  const [expanded, setExpanded] = useState(false);
+  const { clonePost, isCloning } = useClonePost();
+  const [justCloned, setJustCloned] = useState(false);
 
-  const def = getNodeDefinition(node.type);
-  // Component Instance KHÔNG expand được — đúng quy tắc đã áp dụng nhất quán từ V1.9
-  // trong chính Editor (nội dung thật chỉ sửa/xem qua Component gốc).
-  const hasChildren = def?.nodeKind !== "component-instance" && node.children.length > 0;
-  const displayName = useDisplayName(node, fullTree);
-
-  const handleToggle = (e: React.MouseEvent) => {
-    // PostCard bọc row này trong <Link> — thiếu 2 dòng này sẽ vô tình điều hướng sang
-    // trang chi tiết mỗi khi bấm mở/đóng node, giống bug đã né với CloneButton/SharePost.
+  const handleClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setExpanded((prev) => !prev);
+    const success = await clonePost(postId);
+    if (!success) return;
+
+    // "✓ Cloned" chỉ tạm 2s rồi revert lại "Clone" — không khoá nút vĩnh viễn, cho phép
+    // clone thêm 1 bản độc lập nếu người dùng thật sự muốn (đúng quyết định đã chốt).
+    setJustCloned(true);
+    onCloned?.();
+    setTimeout(() => setJustCloned(false), CLONED_STATE_DURATION_MS);
   };
 
   return (
-    <div>
-      <div
-        onClick={hasChildren ? handleToggle : undefined}
-        style={{ paddingLeft: depth * 16 }}
-        className={cn(
-          "flex items-center gap-1.5 text-xs py-1 rounded",
-          hasChildren && "cursor-pointer hover:bg-muted",
-          def?.nodeKind === "component" && "text-purple-600",
-          def?.nodeKind === "component-instance" && "text-purple-500 italic"
-        )}
-      >
-        {hasChildren ? (
-          expanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />
-        ) : (
-          <span className="w-3 shrink-0" />
-        )}
-        <NodeIcon node={node} />
-        <span className="truncate">{displayName}</span>
-      </div>
-
-      {expanded &&
-        node.children.map((child) => (
-          <ReadonlyNodeRow key={child.id} node={child} fullTree={fullTree} depth={depth + 1} />
-        ))}
-    </div>
+    <Button size="sm" className={className} disabled={isCloning} onClick={handleClick}>
+      {isCloning ? (
+        <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+      ) : justCloned ? (
+        <Check className="h-3.5 w-3.5 mr-1.5" />
+      ) : (
+        <Copy className="h-3.5 w-3.5 mr-1.5" />
+      )}
+      {isCloning ? "Cloning..." : justCloned ? "Cloned" : "Clone"}
+    </Button>
   );
 }
 ```
 
-## File mới: `features/node-tree-preview/components/readonly-node-tree.tsx`
+(Bỏ `variant="secondary"` cũ — mặc định `Button` là filled/primary, đúng yêu cầu PRD "Clone là Primary CTA, nổi bật nhất".)
+
+## File mới: `features/post-actions/components/post-actions-bar.tsx`
 
 ```tsx
 "use client";
 
-import { useMemo } from "react";
-import { TreeNode } from "@/core/types/builder.types";
-import { getPageNodes } from "@/core/store/builder-store";
-import { ReadonlyNodeRow } from "./readonly-node-row";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Heart, MessageCircle, Copy } from "lucide-react";
+import { useToggleLike } from "@/features/likes/hooks/use-toggle-like";
+import { CloneButton } from "@/features/publish-post/components/clone-button";
+import { SharePost } from "@/features/share-post/components/share-post";
+import { cn } from "@/core/utils/cn";
 
-export function ReadonlyNodeTree({
-  tree,
-  maxHeight = 200,
-}: {
-  tree: TreeNode;
-  maxHeight?: number;
-}) {
-  const pageNodes = useMemo(() => getPageNodes(tree), [tree]);
+interface PostActionsBarProps {
+  postId: string;
+  postName: string;
+  canonicalUrl: string;
+  detailUrl: string;
+  variant: "feed" | "detail";
+  initialLikeCount: number;
+  initialIsLiked: boolean;
+  commentCount: number;
+  initialCloneCount: number;
+}
 
-  if (pageNodes.length === 0) {
-    return <p className="text-xs text-muted-foreground">Không có trang nào.</p>;
-  }
+export function PostActionsBar({
+  postId,
+  postName,
+  canonicalUrl,
+  detailUrl,
+  variant,
+  initialLikeCount,
+  initialIsLiked,
+  commentCount,
+  initialCloneCount,
+}: PostActionsBarProps) {
+  const router = useRouter();
+  const { isLiked, likeCount, isToggling, toggleLike } = useToggleLike(postId, initialIsLiked, initialLikeCount);
+  const [cloneCount, setCloneCount] = useState(initialCloneCount);
+
+  // preventDefault + stopPropagation LUÔN gọi — vô hại khi variant="detail" (không nằm
+  // trong <Link>), bắt buộc khi variant="feed" (PostCard bọc ngoài bằng <Link>).
+  const handleLikeClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    void toggleLike();
+  };
+
+  const handleCommentClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (variant === "feed") {
+      router.push(`${detailUrl}#comments`);
+    } else {
+      document.getElementById("comments")?.scrollIntoView({ behavior: "smooth" });
+    }
+  };
 
   return (
-    <div className="overflow-y-auto" style={{ maxHeight }}>
-      {pageNodes.map((page) => (
-        <ReadonlyNodeRow key={page.id} node={page} fullTree={tree} depth={0} />
-      ))}
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <button onClick={handleLikeClick} disabled={isToggling} className="flex items-center gap-1 hover:text-foreground">
+          <Heart className={cn("h-3.5 w-3.5", isLiked && "fill-red-500 text-red-500")} />
+          {likeCount}
+        </button>
+
+        <button onClick={handleCommentClick} className="flex items-center gap-1 hover:text-foreground">
+          <MessageCircle className="h-3.5 w-3.5" />
+          {commentCount}
+        </button>
+
+        <span className="flex items-center gap-1">
+          <Copy className="h-3.5 w-3.5" />
+          {cloneCount}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <CloneButton postId={postId} onCloned={() => setCloneCount((c) => c + 1)} />
+        <SharePost title={postName} canonicalUrl={canonicalUrl} stopPropagation={variant === "feed"} />
+      </div>
     </div>
   );
 }
 ```
-
----
-# Phase 3 
 
 ## Cập nhật `features/feed/components/post-card.tsx` — full file
 
 ```tsx
 import Link from "next/link";
 import { FeedPost } from "../utils/get-feed-posts";
-import { CloneButton } from "@/features/publish-post/components/clone-button";
-import { SharePost } from "@/features/share-post/components/share-post";
 import { ReadonlyNodeTree } from "@/features/node-tree-preview/components/readonly-node-tree";
+import { PostActionsBar } from "@/features/post-actions/components/post-actions-bar";
 import { getPostUrl } from "@/core/utils/site-url";
 
 export function PostCard({ post }: { post: FeedPost }) {
   const canonicalUrl = getPostUrl(post.authorUsername, post.slug);
+  const detailUrl = `/${post.authorUsername}/${post.slug}`;
 
   return (
-    <Link
-      href={`/${post.authorUsername}/${post.slug}`}
-      className="flex border rounded-lg overflow-hidden hover:shadow-md transition-shadow bg-white"
-    >
+    <Link href={detailUrl} className="flex border rounded-lg overflow-hidden hover:shadow-md transition-shadow bg-white">
       <div className="w-2/5 p-3 flex flex-col gap-1.5 min-w-0">
         <p className="text-sm font-semibold truncate">{post.name}</p>
         <p className="text-xs text-muted-foreground truncate">bởi {post.authorName}</p>
 
-        {/* Đổi từ list tên trang phẳng -> cây Node thật, thu gọn mặc định, tự cuộn khi
-            tràn (Phase 2 đã xử lý overflow ở đây). */}
         <div className="mt-1 border rounded-md p-1.5 bg-muted/30">
           <ReadonlyNodeTree tree={post.treeData} maxHeight={160} />
         </div>
 
-        <div className="mt-auto flex items-center gap-2">
-          <CloneButton postId={post.id} />
-          <SharePost title={post.name} canonicalUrl={canonicalUrl} stopPropagation />
+        <div className="mt-auto">
+          <PostActionsBar
+            postId={post.id}
+            postName={post.name}
+            canonicalUrl={canonicalUrl}
+            detailUrl={detailUrl}
+            variant="feed"
+            initialLikeCount={post.likeCount}
+            initialIsLiked={post.isLiked}
+            commentCount={post.commentCount}
+            initialCloneCount={post.cloneCount}
+          />
         </div>
       </div>
 
@@ -321,9 +501,8 @@ export function PostCard({ post }: { post: FeedPost }) {
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { CloneButton } from "@/features/publish-post/components/clone-button";
-import { SharePost } from "@/features/share-post/components/share-post";
 import { ReadonlyNodeTree } from "@/features/node-tree-preview/components/readonly-node-tree";
+import { PostActionsBar } from "@/features/post-actions/components/post-actions-bar";
 import { getPostUrl, getFallbackOgImageUrl } from "@/core/utils/site-url";
 import { getPostDetailData } from "@/features/post-detail/utils/get-post-detail-data";
 import { getPostComments } from "@/features/comments/utils/get-post-comments";
@@ -365,7 +544,7 @@ export async function generateMetadata({ params }: PageParams): Promise<Metadata
 
 export default async function PostDetailPage({ params }: PageParams) {
   const { username, slug } = await params;
-  const { profile, post } = await getPostDetailData(username, slug);
+  const { profile, post, likeCount, isLiked } = await getPostDetailData(username, slug);
   const canonicalUrl = getPostUrl(profile.username, slug);
   const { comments, totalCount, hasMore } = await getPostComments(post.id, 0);
 
@@ -397,15 +576,22 @@ export default async function PostDetailPage({ params }: PageParams) {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Đăng ngày {new Date(post.published_at).toLocaleDateString("vi-VN")} · {post.clone_count} lượt clone
+        Đăng ngày {new Date(post.published_at).toLocaleDateString("vi-VN")}
       </p>
 
-      <div className="flex items-center gap-2">
-        <CloneButton postId={post.id} />
-        <SharePost title={post.name} canonicalUrl={canonicalUrl} />
-      </div>
+      <PostActionsBar
+        postId={post.id}
+        postName={post.name}
+        canonicalUrl={canonicalUrl}
+        detailUrl={`/${profile.username}/${slug}`}
+        variant="detail"
+        initialLikeCount={likeCount}
+        initialIsLiked={isLiked}
+        commentCount={totalCount}
+        initialCloneCount={post.clone_count}
+      />
 
-      <div className="border-t pt-4">
+      <div id="comments" className="border-t pt-4">
         <CommentsSection
           postId={post.id}
           initialComments={comments}
@@ -419,6 +605,6 @@ export default async function PostDetailPage({ params }: PageParams) {
 ```
 
 ---
-**Test nhanh:** vào Feed → mỗi PostCard phải hiện khung cây Node **thu gọn** (chỉ dòng Page, không tự bung), scroll được nếu Page nhiều. Bấm mở 1 Page trong PostCard → phải bung đúng cấu trúc con, **không** bị điều hướng nhầm sang trang chi tiết (xác nhận `stopPropagation` hoạt động). Vào trang chi tiết `/<username>/<slug>` → khung "Cấu trúc dự án" phải hiện cùng cây, cao hơn (320px), tự cuộn nếu tràn. Post có dùng Component tái sử dụng → dòng Instance phải hiện tên thật + "(Instance)", không có chevron mở được.
+**Đối chiếu Acceptance Criteria PRD:** Clone primary/filled ✅ · Like toggle optimistic (không delay) ✅ · Comment click đúng 2 hành vi khác nhau theo variant ✅ · Share tái dùng nguyên component cũ, không viết lại ✅ · Không có Statistics section riêng, stats gộp 1 dòng ✅ · Không animation/gradient chói cho Clone (chỉ dùng biến thể mặc định của Button) ✅.
 
-Toàn bộ 3 Phase của tính năng "Node Tree Preview" đã hoàn thành — Post Detail và Feed Card giờ hiện đúng cấu trúc thật của dự án, không còn chỉ là list tên trang phẳng.
+**Test nhanh:** Feed → bấm ♡ trên 1 card → phải đổi màu đỏ + tăng số **ngay lập tức** (không đợi network), không điều hướng nhầm sang chi tiết. Bấm 💬 N → phải chuyển sang trang chi tiết **và tự cuộn xuống đúng khối bình luận**. Ở Post Detail, bấm 💬 N → chỉ cuộn mượt, **không** đổi URL/reload. Bấm Clone → nút đổi "Cloning..." → "✓ Cloned" → sau 2s về lại "Clone", đồng thời số `⧉` cạnh đó phải **tăng ngay tại chỗ**, không cần reload trang.
