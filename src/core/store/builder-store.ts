@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { TreeNode } from "@/core/types/builder.types";
+import { PageCapture } from "@/core/types/page-capture.types";
 import { StyleProps, Breakpoint } from "@/core/types/style.types";
 import { getNodeDefinition } from "@/core/registry/node-registry";
 import { canContain } from "@/core/registry/node-rules";
@@ -66,8 +67,7 @@ interface BuilderState {
   convertToComponent: (nodeId: string, name: string) => void;
 
   draftPostTree: TreeNode | null;
-  draftPostThumbnail: string | null;
-  draftPostPageNames: string[];
+  draftPostPageCaptures: PageCapture[];
   recentProjects: RecentProject[];
   projectCount: number;
   projectsLoaded: boolean;
@@ -75,7 +75,7 @@ interface BuilderState {
   highlightedProjectId: string | null;
   isLoadingProjects: boolean;
   projectsError: string | null;
-  setDraftPost: (payload: { tree: TreeNode; thumbnail: string; pageNames: string[] }) => void;
+  setDraftPost: (payload: { tree: TreeNode; pageCaptures: PageCapture[] }) => void;
   clearDraftPost: () => void;
   setRecentProjects: (projects: RecentProject[], count: number) => void;
   setProjectSidebarOpen: (open: boolean) => void;
@@ -209,8 +209,7 @@ tree: createDefaultProjectTree(),
   authLoading: true,
   currentProjectId: null,
   draftPostTree: null,
-  draftPostThumbnail: null,
-  draftPostPageNames: [],
+  draftPostPageCaptures: [],
   recentProjects: [],
   projectCount: 0,
   projectsLoaded: false,
@@ -498,9 +497,11 @@ tree: createDefaultProjectTree(),
   setPreviewContainerEl: (el) => set({ previewContainerEl: el }),
 setUser: (user) => set({ user }),
   setAuthLoading: (authLoading) => set({ authLoading }),
-  setCurrentProjectId: (id) => set({ currentProjectId: id }),  setDraftPost: ({ tree, thumbnail, pageNames }) =>
-    set({ draftPostTree: tree, draftPostThumbnail: thumbnail, draftPostPageNames: pageNames }),
-  clearDraftPost: () => set({ draftPostTree: null, draftPostThumbnail: null, draftPostPageNames: [] }),  loadProjectTree: (tree, projectId) =>
+  setCurrentProjectId: (id) => set({ currentProjectId: id }),
+  setDraftPost: ({ tree, pageCaptures }) =>
+    set({ draftPostTree: tree, draftPostPageCaptures: pageCaptures }),
+  clearDraftPost: () => set({ draftPostTree: null, draftPostPageCaptures: [] }),
+  loadProjectTree: (tree, projectId) =>
     set({
       tree,
       currentProjectId: projectId,
@@ -559,6 +560,22 @@ function collectPageNames(node: TreeNode, acc: string[] = []): string[] {
 
 export function getPageNamesInOrder(tree: TreeNode): string[] {
   return collectPageNames(tree);
+}
+
+function collectPageNodes(node: TreeNode, acc: TreeNode[] = []): TreeNode[] {
+  if (node.type === SYSTEM_NODE_IDS.page) {
+    acc.push(node);
+    return acc;
+  }
+
+  node.children.forEach((child) => collectPageNodes(child, acc));
+  return acc;
+}
+
+export function getPageNodes(tree: TreeNode): TreeNode[] {
+  const appFolder = tree.children.find((child) => child.id === APP_FOLDER_ID);
+  if (!appFolder) return [];
+  return collectPageNodes(appFolder);
 }
 
 // Component đang chứa parentId (nếu có) — dùng để ẩn/chặn tự-instance-vào-chính-mình

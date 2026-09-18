@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { getPageNamesInOrder } from "@/core/store/builder-store";
 import { TreeNode } from "@/core/types/builder.types";
-import { CloneButton } from "@/features/publish-post/components/clone-button";
-import { SharePost } from "@/features/share-post/components/share-post";
+import { ReadonlyNodeTree } from "@/features/node-tree-preview/components/readonly-node-tree";
+import { PostActionsBar } from "@/features/post-actions/components/post-actions-bar";
 import { getPostUrl, getFallbackOgImageUrl } from "@/core/utils/site-url";
 import { getPostDetailData } from "@/features/post-detail/utils/get-post-detail-data";
 import { getPostComments } from "@/features/comments/utils/get-post-comments";
@@ -45,9 +44,7 @@ export async function generateMetadata({ params }: PageParams): Promise<Metadata
 
 export default async function PostDetailPage({ params }: PageParams) {
   const { username, slug } = await params;
-  const { profile, post } = await getPostDetailData(username, slug);
-
-  const pageNames = getPageNamesInOrder(post.tree_data as TreeNode);
+  const { profile, post, likeCount, isLiked } = await getPostDetailData(username, slug);
   const canonicalUrl = getPostUrl(profile.username, slug);
   const { comments, totalCount, hasMore } = await getPostComments(post.id, 0);
 
@@ -72,26 +69,29 @@ export default async function PostDetailPage({ params }: PageParams) {
       {post.description && <p className="text-sm">{post.description}</p>}
 
       <div>
-        <p className="text-xs font-medium text-muted-foreground uppercase mb-1">
-          Gồm {pageNames.length} trang
-        </p>
-        <ul className="text-sm flex flex-wrap gap-2">
-          {pageNames.map((name) => (
-            <li key={name} className="border rounded-full px-2.5 py-0.5 text-xs">{name}</li>
-          ))}
-        </ul>
+        <p className="text-xs font-medium text-muted-foreground uppercase mb-1.5">Cấu trúc dự án</p>
+        <div className="border rounded-md p-2 bg-muted/30">
+          <ReadonlyNodeTree tree={post.tree_data as TreeNode} maxHeight={320} />
+        </div>
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Đăng ngày {new Date(post.published_at).toLocaleDateString("vi-VN")} · {post.clone_count} lượt clone
+        Đăng ngày {new Date(post.published_at).toLocaleDateString("vi-VN")}
       </p>
 
-      <div className="flex items-center gap-2">
-        <CloneButton postId={post.id} />
-        <SharePost title={post.name} canonicalUrl={canonicalUrl} />
-      </div>
+      <PostActionsBar
+        postId={post.id}
+        postName={post.name}
+        canonicalUrl={canonicalUrl}
+        detailUrl={`/${profile.username}/${slug}`}
+        variant="detail"
+        initialLikeCount={likeCount}
+        initialIsLiked={isLiked}
+        commentCount={totalCount}
+        initialCloneCount={post.clone_count}
+      />
 
-      <div className="border-t pt-4">
+      <div id="comments" className="border-t pt-4">
         <CommentsSection
           postId={post.id}
           initialComments={comments}

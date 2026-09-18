@@ -16,5 +16,23 @@ export const getPostDetailData = cache(async (username: string, slug: string) =>
 
   if (error || !post || !post.is_active) notFound();
 
-  return { profile, post };
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { count: likeCount } = await supabase
+    .from("post_likes")
+    .select("*", { count: "exact", head: true })
+    .eq("post_id", post.id);
+
+  let isLiked = false;
+  if (user) {
+    const { data: likeRow } = await supabase
+      .from("post_likes")
+      .select("post_id")
+      .eq("post_id", post.id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    isLiked = !!likeRow;
+  }
+
+  return { profile, post, likeCount: likeCount ?? 0, isLiked };
 });
