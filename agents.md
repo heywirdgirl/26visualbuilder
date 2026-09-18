@@ -1,610 +1,533 @@
-## Cập nhật `features/feed/utils/get-feed-posts.ts` — full file
 
-```typescript
-import { createClient } from "@/core/supabase/server";
-import { TreeNode } from "@/core/types/builder.types";
+# Phase 1
+## Migration mới: bảng `post_pages` + hàm `extract_page_ids()` + `publish_post()`
 
-export interface FeedPost {
-  id: string;
-  name: string;
-  slug: string;
-  thumbnailUrl: string | null;
-  treeData: TreeNode;
-  authorUsername: string;
-  authorName: string;
-  publishedAt: string;
-  cloneCount: number;
-  likeCount: number;
-  isLiked: boolean;
-}
+```sql
+-- ============================================================
+-- 1. post_pages — page_id KHÔNG có FK, vì nó chỉ là 1 node id nằm bên trong tree_data
+--    JSON của chính post đó (không trỏ tới bảng nào cả) — đúng bản chất "page_id là dữ
+--    liệu nội tại của snapshot", không phải quan hệ CSDL thông thường.
+-- ============================================================
+create table public.post_pages (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid not null references public.posts(id) on delete cascade,
+  page_id uuid not null,
+  image_url text not null,
+  created_at timestamptz not null default now(),
+  unique (post_id, page_id) -- chặn 2 ảnh cùng gán cho 1 Page trong cùng 1 post
+);
 
-export async function getFeedPosts(options?: { authorId?: string }): Promise<FeedPost[]> {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+alter table public.post_pages enable row level security;
 
-  let query = supabase
-    .from("posts")
-    .select("id, name, slug, tree_data, thumbnail_url, author_id, published_at, clone_count")
-    .eq("is_active", true)
-    .order("published_at", { ascending: false });
+create policy "Post pages readable when parent post is active or owned"
+  on public.post_pages for select
+  using (
+    exists (
+      select 1 from public.posts
+      where posts.id = post_pages.post_id
+        and (posts.is_active = true or posts.author_id = auth.uid())
+    )
+  );
 
-  if (options?.authorId) query = query.eq("author_id", options.authorId);
+-- KHÔNG tạo policy insert/update/delete — chỉ publish_post() (security definer, bên
+-- dưới) ghi được vào bảng này, đúng nguyên tắc đã áp dụng cho username_redirects.
 
-  const { data: posts, error } = await query;
-  if (error || !posts) {
-    console.error("[feed] Lỗi tải danh sách bài đăng:", error);
-    return [];
-  }
-  if (posts.length === 0) return [];
+-- ============================================================
+-- 2. extract_page_ids — duyệt đệ quy TOÀN BỘ cây JSON, thu thập id của mọi node
+--    type = 'system.page'. Tương đương chính xác hàm collectPageNodes() phía TypeScript
+--    (core/store/builder-store.ts) — cùng logic, viết lại ở tầng SQL để validate được
+--    ngay trong transaction publish.
+-- ============================================================
+create or replace function public.extract_page_ids(tree jsonb)
+returns uuid[]
+language plpgsql
+immutable
+as $$
+declare
+  result uuid[] := array[]::uuid[];
+  child jsonb;
+begin
+  if tree->>'type' = 'system.page' then
+    result := array_append(result, (tree->>'id')::uuid);
+  end if;
 
-  const postIds = posts.map((p) => p.id);
-  const authorIds = Array.from(new Set(posts.map((p) => p.author_id)));
+  for child in select * from jsonb_array_elements(coalesce(tree->'children', '[]'::jsonb))
+  loop
+    result := result || public.extract_page_ids(child);
+  end loop;
 
-  // Batch cho CẢ TRANG cùng lúc — không phải 1 query riêng mỗi post (tránh N+1).
-  // post_likes không hỗ trợ COUNT gộp theo post_id qua PostgREST trực tiếp, nên lấy
-  // nguyên rows trong batch rồi đếm bằng JS — cùng kỹ thuật đã dùng cho badge
-  // "Used this project" ở Comments (Set/Map dựng từ 1 lần fetch, không query lặp lại).
-  const [{ data: profiles }, { data: allLikes }, { data: userLikes }] = await Promise.all([
-    supabase.from("profiles").select("id, username, display_name").in("id", authorIds),
-    supabase.from("post_likes").select("post_id").in("post_id", postIds),
-    user
-      ? supabase.from("post_likes").select("post_id").eq("user_id", user.id).in("post_id", postIds)
-      : Promise.resolve({ data: [] as { post_id: string }[] }),
-  ]);
+  return result;
+end;
+$$;
 
-  const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
+-- ============================================================
+-- 3. publish_post — atomic: tạo posts + toàn bộ post_pages trong 1 transaction. Validate
+--    page_images khớp CHÍNH XÁC (không thiếu, không dư, không trùng) với mọi Page thật
+--    có trong tree_data — đúng quyết định "số ảnh PHẢI bằng số page", ép ở tầng DB,
+--    không chỉ tin tưởng UI.
+-- ============================================================
+create or replace function public.publish_post(
+  target_project_id uuid,
+  post_name text,
+  post_slug text,
+  post_description text,
+  post_tree_data jsonb,
+  cover_thumbnail_url text,
+  page_images jsonb -- dạng: [{"page_id": "...", "image_url": "..."}, ...]
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  new_post_id uuid;
+  expected_page_ids uuid[];
+  provided_page_ids uuid[];
+  img jsonb;
+begin
+  if auth.uid() is null then
+    raise exception 'Cần đăng nhập trước khi đăng bài.';
+  end if;
 
-  const likeCountMap = new Map<string, number>();
-  (allLikes ?? []).forEach((l) => {
-    likeCountMap.set(l.post_id, (likeCountMap.get(l.post_id) ?? 0) + 1);
-  });
+  if not exists (
+    select 1 from public.projects where id = target_project_id and owner_id = auth.uid()
+  ) then
+    raise exception 'Project không tồn tại hoặc không thuộc về bạn.';
+  end if;
 
-  const likedPostIds = new Set((userLikes ?? []).map((l) => l.post_id));
+  expected_page_ids := public.extract_page_ids(post_tree_data);
+  if coalesce(array_length(expected_page_ids, 1), 0) = 0 then
+    raise exception 'Project chưa có Page nào để đăng bài.';
+  end if;
 
-  return posts.map((post) => {
-    const profile = profileMap.get(post.author_id);
-    return {
-      id: post.id,
-      name: post.name,
-      slug: post.slug,
-      thumbnailUrl: post.thumbnail_url,
-      treeData: post.tree_data as TreeNode,
-      authorUsername: profile?.username ?? "unknown",
-      authorName: profile?.display_name ?? "Ẩn danh",
-      publishedAt: post.published_at,
-      cloneCount: post.clone_count,
-      likeCount: likeCountMap.get(post.id) ?? 0,
-      isLiked: likedPostIds.has(post.id),
-    };
-  });
-}
+  select array_agg((elem->>'page_id')::uuid) into provided_page_ids
+  from jsonb_array_elements(page_images) elem;
+
+  if coalesce(array_length(provided_page_ids, 1), 0) != array_length(expected_page_ids, 1) then
+    raise exception 'Số lượng ảnh không khớp số lượng Page trong project.';
+  end if;
+
+  if exists (
+    select unnest(expected_page_ids) except select unnest(provided_page_ids)
+  ) then
+    raise exception 'Thiếu ảnh cho ít nhất 1 Page — mọi Page đều phải có ảnh.';
+  end if;
+
+  if exists (
+    select unnest(provided_page_ids) except select unnest(expected_page_ids)
+  ) then
+    raise exception 'Có ảnh gắn với Page không tồn tại trong project.';
+  end if;
+
+  insert into public.posts (project_id, author_id, slug, name, description, tree_data, thumbnail_url)
+  values (target_project_id, auth.uid(), post_slug, post_name, post_description, post_tree_data, cover_thumbnail_url)
+  returning id into new_post_id;
+
+  for img in select * from jsonb_array_elements(page_images)
+  loop
+    insert into public.post_pages (post_id, page_id, image_url)
+    values (new_post_id, (img->>'page_id')::uuid, img->>'image_url');
+  end loop;
+
+  return new_post_id;
+end;
+$$;
 ```
 
-## Cập nhật `features/post-detail/utils/get-post-detail-data.ts` — full file
-
-```typescript
-import { cache } from "react";
-import { notFound } from "next/navigation";
-import { createClient } from "@/core/supabase/server";
-import { resolveProfileByUsername } from "@/features/profile/utils/resolve-profile-by-username";
-
-export const getPostDetailData = cache(async (username: string, slug: string) => {
-  const profile = await resolveProfileByUsername(username, (u) => `/${u}/${slug}`);
-
-  const supabase = await createClient();
-  const { data: post, error } = await supabase
-    .from("posts")
-    .select("id, name, description, tree_data, thumbnail_url, author_id, published_at, clone_count, is_active")
-    .eq("author_id", profile.id)
-    .eq("slug", slug)
-    .single();
-
-  if (error || !post || !post.is_active) notFound();
-
-  const { data: { user } } = await supabase.auth.getUser();
-
-  // Chỉ 1 post ở đây (khác Feed — batch nhiều post cùng lúc) nên dùng thẳng
-  // { count: "exact", head: true } của PostgREST — đúng công cụ cho đúng quy mô,
-  // không cần fetch rows rồi đếm tay như bên get-feed-posts.ts.
-  const { count: likeCount } = await supabase
-    .from("post_likes")
-    .select("*", { count: "exact", head: true })
-    .eq("post_id", post.id);
-
-  let isLiked = false;
-  if (user) {
-    const { data: likeRow } = await supabase
-      .from("post_likes")
-      .select("post_id")
-      .eq("post_id", post.id)
-      .eq("user_id", user.id)
-      .maybeSingle();
-    isLiked = !!likeRow;
-  }
-
-  return { profile, post, likeCount: likeCount ?? 0, isLiked };
-});
-```
-
-**Lưu ý:** `PostDetailPage` hiện đang destructure `const { profile, post } = await getPostDetailData(...)` — thêm `likeCount`/`isLiked` vào phần này **không phá gì cả** (backward compatible, chỉ thêm field mới vào object trả về), nhưng bạn cần đổi thành `const { profile, post, likeCount, isLiked } = ...` khi tới **Phase 3** để thật sự dùng 2 giá trị mới này — chưa cần sửa `PostDetailPage`/`PostCard` ở bước này.
+Chạy `supabase migration new post_pages_and_publish_post` → dán nội dung trên.
 
 ---
-**Test nhanh (qua console/log tạm, chưa có UI):** thêm tạm 1 vài row vào `post_likes` cho 1-2 post test → gọi `getFeedPosts()` → phải thấy `cloneCount`/`likeCount` đúng số thật, `isLiked` đúng `true`/`false` tuỳ tài khoản đang đăng nhập có nằm trong `post_likes` của post đó không. Gọi `getPostDetailData(username, slug)` cho đúng 1 post đó → `likeCount`/`isLiked` phải khớp y hệt kết quả từ Feed (2 cách tính khác nhau nhưng phải ra cùng đáp số).
+**Test nhanh (SQL Editor, chưa cần UI):**
+1. `select public.extract_page_ids('{"type":"system.folder","children":[{"type":"system.page","id":"11111111-1111-1111-1111-111111111111","children":[]},{"type":"system.folder","children":[{"type":"system.page","id":"22222222-2222-2222-2222-222222222222","children":[]}]}]}'::jsonb);` → phải trả về đúng mảng 2 UUID (xác nhận đệ quy qua Folder lồng nhau hoạt động).
+2. Lấy 1 `project_id` thật của bạn (có ≥1 Page) → gọi `publish_post()` với `page_images` **thiếu 1 Page** → phải bị chặn đúng lỗi "Thiếu ảnh cho ít nhất 1 Page". Gọi lại với **đủ** ảnh khớp từng `page_id` thật → phải tạo thành công, kiểm `post_pages` trong Table Editor phải có đúng N row.
 
-# phase 2
+**Chưa dùng được từ UI** (đúng dự kiến — `usePreparePost`/`route /post` cũ vẫn gọi luồng cũ, chưa biết tới `publish_post()`) — đó là việc của Phase 2-3.
 
-## File mới: `features/likes/actions/toggle-like-action.ts`
+# Phase 2 
+## File mới: `core/types/page-capture.types.ts`
+
+Đặt ở `core/` (không phải `features/canvas-preview/`) vì `builder-store.ts` cần import type này — tránh store (tầng lõi) phải phụ thuộc ngược vào 1 feature cụ thể:
 
 ```typescript
-"use server";
-
-import { createClient } from "@/core/supabase/server";
-
-export async function toggleLikeAction(postId: string) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Cần đăng nhập để thích bài viết." };
-
-  const { data: existing } = await supabase
-    .from("post_likes")
-    .select("post_id")
-    .eq("post_id", postId)
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (existing) {
-    const { error } = await supabase
-      .from("post_likes")
-      .delete()
-      .eq("post_id", postId)
-      .eq("user_id", user.id);
-    if (error) {
-      console.error("[likes] Unlike thất bại:", error);
-      return { error: "Không thể bỏ thích — thử lại." };
-    }
-  } else {
-    const { error } = await supabase
-      .from("post_likes")
-      .insert({ post_id: postId, user_id: user.id });
-    // primary key (post_id, user_id) tự chặn duplicate ở tầng DB — nếu race condition
-    // hiếm gặp (bấm 2 lần liên tiếp quá nhanh) khiến insert trùng, coi là "đã like",
-    // không cần báo lỗi khó hiểu cho người dùng.
-    if (error && error.code !== "23505") {
-      console.error("[likes] Like thất bại:", error);
-      return { error: "Không thể thích bài viết — thử lại." };
-    }
-  }
-
-  // Đếm lại SỐ THẬT ngay sau khi ghi — không tự +1/-1 trên client, tránh lệch nếu có
-  // request khác xảy ra đồng thời (đúng nguyên tắc đã áp dụng cho projectCount ở Global Shell).
-  const { count } = await supabase
-    .from("post_likes")
-    .select("*", { count: "exact", head: true })
-    .eq("post_id", postId);
-
-  return { success: true as const, isLiked: !existing, likeCount: count ?? 0 };
+export interface PageCapture {
+  pageId: string;
+  pageName: string;
+  dataUrl: string;
 }
 ```
 
-## File mới: `features/likes/hooks/use-toggle-like.ts`
+## Patch `core/store/builder-store.ts`
+
+Thêm import:
+```typescript
+import { PageCapture } from "@/core/types/page-capture.types";
+```
+
+Đổi phần draft post trong interface `BuilderState`:
+```typescript
+// Đổi:
+  draftPostTree: TreeNode | null;
+  draftPostThumbnail: string | null;
+  draftPostPageNames: string[];
+  setDraftPost: (payload: { tree: TreeNode; thumbnail: string; pageNames: string[] }) => void;
+  clearDraftPost: () => void;
+
+// Thành:
+  draftPostTree: TreeNode | null;
+  draftPostPageCaptures: PageCapture[]; // 1 phần tử = 1 Page, đủ dataUrl để Phase 3 upload từng ảnh
+  setDraftPost: (payload: { tree: TreeNode; pageCaptures: PageCapture[] }) => void;
+  clearDraftPost: () => void;
+```
+
+Đổi default state:
+```typescript
+// Đổi:
+  draftPostTree: null,
+  draftPostThumbnail: null,
+  draftPostPageNames: [],
+// Thành:
+  draftPostTree: null,
+  draftPostPageCaptures: [],
+```
+
+Đổi action:
+```typescript
+// Đổi:
+  setDraftPost: ({ tree, thumbnail, pageNames }) =>
+    set({ draftPostTree: tree, draftPostThumbnail: thumbnail, draftPostPageNames: pageNames }),
+  clearDraftPost: () => set({ draftPostTree: null, draftPostThumbnail: null, draftPostPageNames: [] }),
+// Thành:
+  setDraftPost: ({ tree, pageCaptures }) => set({ draftPostTree: tree, draftPostPageCaptures: pageCaptures }),
+  clearDraftPost: () => set({ draftPostTree: null, draftPostPageCaptures: [] }),
+```
+
+## File mới: `features/canvas-preview/utils/capture-all-pages.ts`
+
+```typescript
+import { useBuilderStore, getPageNodes } from "@/core/store/builder-store";
+import { captureNodeToWebp, CaptureOptions } from "./capture-image";
+import { PageCapture } from "@/core/types/page-capture.types";
+
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+// Chụp TUẦN TỰ mọi Page — KHÔNG chạy song song, vì mọi Page dùng chung 1 Canvas DOM
+// thật duy nhất (đổi activePageId để hiện đúng nội dung); chụp song song sẽ khiến các
+// request tranh nhau đổi cùng 1 DOM, dễ đọc nhầm ảnh giữa các trang.
+export async function captureAllPagesClean(options?: CaptureOptions): Promise<PageCapture[] | null> {
+  const {
+    tree,
+    previewContainerEl,
+    activePageId: originalActivePageId,
+    activeNodeId: originalActiveNodeId,
+    setActivePage,
+    setActiveNode,
+    setHighlightReferenceId,
+  } = useBuilderStore.getState();
+
+  if (!previewContainerEl) return null;
+
+  const pages = getPageNodes(tree);
+  if (pages.length === 0) return [];
+
+  setActiveNode(null);
+  setHighlightReferenceId(null);
+
+  const results: PageCapture[] = [];
+
+  try {
+    for (const page of pages) {
+      setActivePage(page.id);
+      // 2 animation frame để chắc chắn React re-render xong Page mới + browser đã paint
+      // thật trước khi chụp — cùng kỹ thuật đã dùng ở captureActivePageClean() (V3).
+      await nextFrame();
+      await nextFrame();
+
+      const dataUrl = await captureNodeToWebp(previewContainerEl, options);
+      const pageName = String((page.props as { name?: string }).name ?? "Page");
+      results.push({ pageId: page.id, pageName, dataUrl });
+    }
+  } finally {
+    // Khôi phục đúng trang + lựa chọn gốc — đóng lại /post phải thấy Canvas y hệt
+    // trước khi bấm Post, không bị "kẹt" ở trang cuối cùng vừa chụp.
+    setActivePage(originalActivePageId ?? pages[0].id);
+    setActiveNode(originalActiveNodeId);
+  }
+
+  return results;
+}
+```
+
+## Cập nhật `features/publish-post/hooks/use-prepare-post.ts` — full file
 
 ```typescript
 "use client";
 
 import { useState } from "react";
-import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import { useBuilderStore } from "@/core/store/builder-store";
-import { toggleLikeAction } from "../actions/toggle-like-action";
+import { useSaveProject } from "@/features/cloud-save/hooks/use-save-project";
+import { captureAllPagesClean } from "@/features/canvas-preview/utils/capture-all-pages";
 
-export function useToggleLike(postId: string, initialIsLiked: boolean, initialLikeCount: number) {
-  const user = useBuilderStore((s) => s.user);
-  const [isLiked, setIsLiked] = useState(initialIsLiked);
-  const [likeCount, setLikeCount] = useState(initialLikeCount);
-  const [isToggling, setIsToggling] = useState(false);
+export function usePreparePost() {
+  const router = useRouter();
+  const { saveProject } = useSaveProject();
+  const [isPreparing, setIsPreparing] = useState(false);
 
-  const toggleLike = async () => {
+  const preparePost = async () => {
+    const { user, tree, currentProjectId } = useBuilderStore.getState();
     if (!user) {
-      toast.error("Đăng nhập để thích bài viết.");
+      window.alert("Đăng nhập trước khi đăng bài.");
       return;
     }
-    if (isToggling) return;
 
-    // Optimistic update — Like cần phản hồi tức thì (không giống Clone, vốn đã có
-    // state "Cloning..." hợp lý để chờ). Rollback lại nếu server trả lỗi.
-    const previousLiked = isLiked;
-    const previousCount = likeCount;
-    setIsLiked(!previousLiked);
-    setLikeCount(previousLiked ? previousCount - 1 : previousCount + 1);
-    setIsToggling(true);
-
+    setIsPreparing(true);
     try {
-      const res = await toggleLikeAction(postId);
-      if (!res.success) {
-        setIsLiked(previousLiked);
-        setLikeCount(previousCount);
-        toast.error(res.error ?? "Không thể thích bài viết.");
+      if (!currentProjectId) {
+        await saveProject();
+      }
+
+      const finalProjectId = useBuilderStore.getState().currentProjectId;
+      if (!finalProjectId) {
+        window.alert("Cần lưu project trước khi đăng bài.");
         return;
       }
-      // Đồng bộ lại đúng số thật từ server — phòng trường hợp có like/unlike khác
-      // xảy ra song song trong lúc đang chờ optimistic update ở trên.
-      setIsLiked(res.isLiked);
-      setLikeCount(res.likeCount);
-    } catch (err) {
-      setIsLiked(previousLiked);
-      setLikeCount(previousCount);
-      console.error("[likes] toggleLike thất bại:", err);
-      toast.error("Không thể thích bài viết.");
+
+      // Chụp TUẦN TỰ mọi Page (không chỉ trang đang mở) — đúng quyết định "số ảnh phải
+      // bằng số page". Có thể mất vài giây nếu project nhiều trang.
+      const pageCaptures = await captureAllPagesClean({ pixelRatio: 2 });
+      if (pageCaptures === null) {
+        window.alert("Không chụp được ảnh Canvas — thử lại.");
+        return;
+      }
+      if (pageCaptures.length === 0) {
+        window.alert("Project chưa có Page nào để đăng bài.");
+        return;
+      }
+
+      useBuilderStore.getState().setDraftPost({
+        tree: structuredClone(tree),
+        pageCaptures,
+      });
+
+      router.push("/post");
     } finally {
-      setIsToggling(false);
+      setIsPreparing(false);
     }
   };
 
-  return { isLiked, likeCount, isToggling, toggleLike };
+  return { preparePost, isPreparing };
 }
 ```
 
 ---
-**Test nhanh (chưa có UI nút Like — Phase 3):** gọi tạm `toggleLikeAction(postId)` qua 1 nút test bất kỳ hoặc console (Server Action gọi được trực tiếp trong Client Component) → lần 1 phải trả `isLiked: true`, `likeCount` tăng 1; gọi lại lần 2 với cùng `postId` → phải trả `isLiked: false`, giảm về đúng số cũ. Kiểm tra Table Editor → `post_likes` phải có/mất đúng 1 row tương ứng, không tạo trùng dù bấm nhanh liên tục nhiều lần.
+**1 hiệu ứng phụ cần biết trước khi test** (không phải bug, chỉ là hệ quả tự nhiên chưa từng xảy ra ở bản 1-trang): vì nút "Post" **không mở dialog che Canvas** trước khi chụp (khác với mockup dialog của Gemini), trong lúc chụp tuần tự, bạn sẽ **thấy Canvas thật sự "chạy" qua từng trang** (Home → About → Blog...) trước khi chuyển sang `/post` — giống hiệu ứng slideshow ngắn. Không sai, chỉ là trải nghiệm mới; nếu sau này thấy khó chịu, Phase 3 (hoặc 1 bản sau) có thể thêm overlay loading che Canvas lại trong lúc này.
 
-# phase 3
+**⚠️ `src/app/post/page.tsx` sẽ báo lỗi type ngay bây giờ** (đọc `draftPostThumbnail`/`draftPostPageNames` đã bị xoá khỏi store) — **đúng dự kiến**, đây chính là việc của Phase 3.
 
-Trước khi vào code, 1 khoảng trống dữ liệu cần vá: `get-feed-posts.ts` (Phase 1) chưa hề lấy **số lượng comment** — PRD yêu cầu `💬 4` hiện ngay trên Feed Card, không chỉ ở Post Detail. Thêm 1 batch query nữa theo đúng kỹ thuật đã dùng cho Like (đếm bằng JS từ 1 lần fetch, không N+1).
+**Test nhanh (console, chưa cần UI Phase 3):** vào Editor, mở DevTools Console, gọi tay `useBuilderStore.getState().tree` để chắc project có ≥2 Page → bấm nút "Post" hiện tại (sẽ crash khi vào `/post` do lỗi type, không sao) → trước khi crash, gọi ngay `useBuilderStore.getState().draftPostPageCaptures` → phải thấy 1 mảng đúng số lượng Page, mỗi phần tử có `dataUrl` dạng `data:image/webp;base64,...` hợp lệ (mở link đó trong tab mới để xác nhận đúng ảnh từng trang, không bị lẫn trang này với trang khác).
 
-**1 quyết định dọn dẹp:** dòng "· N lượt clone" cũ trong Post Detail sẽ **bỏ** — trùng lặp thông tin với `⧉ N` trong stats row mới, hiện 2 nơi cùng 1 số dễ gây lệch nhìn (VD Clone ngay lúc đang xem, 1 nơi cập nhật 1 nơi không).
+# Phase 3 
+Cần cài thêm 1 component chưa dùng tới (dù `Badge` đã có sẵn từ Comments) — không cần cài gì mới thực ra, `Badge`/`Input`/`Textarea` đều đã có. Vào code luôn.
 
-## Patch `features/feed/utils/get-feed-posts.ts`
+## File mới: `features/publish-post/utils/data-url-to-file.ts`
 
-Thêm vào interface:
+Tách ra từ code cũ (trước đây viết thẳng trong `/post/page.tsx`) — giờ cần gọi lại nhiều lần (1 lần/trang), không lặp code:
+
 ```typescript
-export interface FeedPost {
-  // ...giữ nguyên các field cũ
-  commentCount: number; // 👈 thêm
+export function dataUrlToFile(dataUrl: string, filename: string): File {
+  const [header, base64] = dataUrl.split(",");
+  const mime = header.match(/data:(.*);base64/)?.[1] ?? "image/webp";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new File([bytes], filename, { type: mime });
 }
 ```
 
-Thêm batch query (đặt cạnh khối `Promise.all` đã có ở Phase 1):
-```typescript
-const { data: allComments } = await supabase
-  .from("comments")
-  .select("post_id")
-  .in("post_id", postIds);
-
-const commentCountMap = new Map<string, number>();
-(allComments ?? []).forEach((c) => {
-  commentCountMap.set(c.post_id, (commentCountMap.get(c.post_id) ?? 0) + 1);
-});
-```
-
-Thêm vào object trả về cuối hàm:
-```typescript
-commentCount: commentCountMap.get(post.id) ?? 0,
-```
-
-## Patch `features/publish-post/hooks/use-clone-post.ts`
-
-Đổi `clonePost` trả về `boolean` — để `CloneButton` biết chính xác có nên bump số liệu/hiện "✓ Cloned" hay không:
-```typescript
-const clonePost = async (postId: string): Promise<boolean> => {
-  setIsCloning(true);
-  try {
-    const res = await clonePostAction(postId);
-    if (!res.success) {
-      toast.error(res.error ?? "Clone thất bại.");
-      return false; // 👈 đổi từ "return;"
-    }
-    toast.success("✓ Added to your projects");
-    await fetchRecentProjects();
-    setHighlightedProjectId(res.projectId);
-    setTimeout(() => setHighlightedProjectId(null), HIGHLIGHT_DURATION_MS);
-    return true; // 👈 thêm
-  } finally {
-    setIsCloning(false);
-  }
-};
-```
-
-## Cập nhật `features/publish-post/components/clone-button.tsx` — full file
-
-```tsx
-"use client";
-
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Copy, Check, Loader2 } from "lucide-react";
-import { useClonePost } from "../hooks/use-clone-post";
-
-const CLONED_STATE_DURATION_MS = 2000;
-
-export function CloneButton({
-  postId,
-  className,
-  onCloned,
-}: {
-  postId: string;
-  className?: string;
-  onCloned?: () => void; // PostActionsBar dùng để bump số ⧉ trong stats row
-}) {
-  const { clonePost, isCloning } = useClonePost();
-  const [justCloned, setJustCloned] = useState(false);
-
-  const handleClick = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const success = await clonePost(postId);
-    if (!success) return;
-
-    // "✓ Cloned" chỉ tạm 2s rồi revert lại "Clone" — không khoá nút vĩnh viễn, cho phép
-    // clone thêm 1 bản độc lập nếu người dùng thật sự muốn (đúng quyết định đã chốt).
-    setJustCloned(true);
-    onCloned?.();
-    setTimeout(() => setJustCloned(false), CLONED_STATE_DURATION_MS);
-  };
-
-  return (
-    <Button size="sm" className={className} disabled={isCloning} onClick={handleClick}>
-      {isCloning ? (
-        <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-      ) : justCloned ? (
-        <Check className="h-3.5 w-3.5 mr-1.5" />
-      ) : (
-        <Copy className="h-3.5 w-3.5 mr-1.5" />
-      )}
-      {isCloning ? "Cloning..." : justCloned ? "Cloned" : "Clone"}
-    </Button>
-  );
-}
-```
-
-(Bỏ `variant="secondary"` cũ — mặc định `Button` là filled/primary, đúng yêu cầu PRD "Clone là Primary CTA, nổi bật nhất".)
-
-## File mới: `features/post-actions/components/post-actions-bar.tsx`
+## Cập nhật `src/app/post/page.tsx` — full file, thay hoàn toàn nội dung cũ
 
 ```tsx
 "use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Heart, MessageCircle, Copy } from "lucide-react";
-import { useToggleLike } from "@/features/likes/hooks/use-toggle-like";
-import { CloneButton } from "@/features/publish-post/components/clone-button";
-import { SharePost } from "@/features/share-post/components/share-post";
-import { cn } from "@/core/utils/cn";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Loader2 } from "lucide-react";
+import { useBuilderStore } from "@/core/store/builder-store";
+import { createClient } from "@/core/supabase/client";
+import { useUploadImage } from "@/features/media-upload/hooks/use-upload-image";
+import { slugifyPathSegment } from "@/features/code-generator/utils/path-utils";
+import { dataUrlToFile } from "@/features/publish-post/utils/data-url-to-file";
 
-interface PostActionsBarProps {
-  postId: string;
-  postName: string;
-  canonicalUrl: string;
-  detailUrl: string;
-  variant: "feed" | "detail";
-  initialLikeCount: number;
-  initialIsLiked: boolean;
-  commentCount: number;
-  initialCloneCount: number;
-}
+type PublishPhase = "idle" | "uploading" | "saving";
 
-export function PostActionsBar({
-  postId,
-  postName,
-  canonicalUrl,
-  detailUrl,
-  variant,
-  initialLikeCount,
-  initialIsLiked,
-  commentCount,
-  initialCloneCount,
-}: PostActionsBarProps) {
+export default function NewPostPage() {
   const router = useRouter();
-  const { isLiked, likeCount, isToggling, toggleLike } = useToggleLike(postId, initialIsLiked, initialLikeCount);
-  const [cloneCount, setCloneCount] = useState(initialCloneCount);
+  const draftTree = useBuilderStore((s) => s.draftPostTree);
+  const draftPageCaptures = useBuilderStore((s) => s.draftPostPageCaptures);
+  const currentProjectId = useBuilderStore((s) => s.currentProjectId);
+  const clearDraftPost = useBuilderStore((s) => s.clearDraftPost);
+  const { uploadImage } = useUploadImage();
 
-  // preventDefault + stopPropagation LUÔN gọi — vô hại khi variant="detail" (không nằm
-  // trong <Link>), bắt buộc khi variant="feed" (PostCard bọc ngoài bằng <Link>).
-  const handleLikeClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    void toggleLike();
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [description, setDescription] = useState("");
+  const [phase, setPhase] = useState<PublishPhase>("idle");
+  const [uploadedCount, setUploadedCount] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!draftTree || draftPageCaptures.length === 0) {
+    return (
+      <div className="flex h-screen items-center justify-center text-center">
+        <div>
+          <p className="text-sm text-muted-foreground mb-2">
+            Chưa có bản nháp để đăng — quay lại Editor và bấm nút &quot;Post&quot; trước.
+          </p>
+          <a href="/projects" className="text-sm text-primary underline">Quay lại danh sách project</a>
+        </div>
+      </div>
+    );
+  }
+
+  const handleNameChange = (value: string) => {
+    setName(value);
+    setSlug(slugifyPathSegment(value));
   };
 
-  const handleCommentClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (variant === "feed") {
-      router.push(`${detailUrl}#comments`);
-    } else {
-      document.getElementById("comments")?.scrollIntoView({ behavior: "smooth" });
+  const handlePublish = async () => {
+    if (!name.trim() || !slug.trim()) {
+      setError("Nhập tên bài đăng trước.");
+      return;
+    }
+    if (!currentProjectId) {
+      setError("Thiếu project — quay lại Editor và thử lại.");
+      return;
+    }
+
+    setError(null);
+    setUploadedCount(0);
+
+    try {
+      // Upload tuần tự để hiện đúng tiến độ (N/tổng) — khác lúc chụp ảnh (Phase 2, phải
+      // tuần tự vì chung 1 DOM), ở đây tuần tự chỉ để UX rõ ràng, không phải bắt buộc kỹ thuật.
+      setPhase("uploading");
+      const pageImages: { page_id: string; image_url: string }[] = [];
+      for (const capture of draftPageCaptures) {
+        const file = dataUrlToFile(capture.dataUrl, `${capture.pageId}.webp`);
+        const publicUrl = await uploadImage(file);
+        if (!publicUrl) {
+          setError(`Upload ảnh trang "${capture.pageName}" thất bại — thử lại.`);
+          return;
+        }
+        pageImages.push({ page_id: capture.pageId, image_url: publicUrl });
+        setUploadedCount((c) => c + 1);
+      }
+
+      setPhase("saving");
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setError("Cần đăng nhập.");
+        return;
+      }
+
+      // publish_post() atomic — tạo posts + toàn bộ post_pages, tự validate số ảnh khớp
+      // đúng số Page trong tree_data (Phase 1), không tin riêng phía client.
+      const { data: newPostId, error: publishError } = await supabase.rpc("publish_post", {
+        target_project_id: currentProjectId,
+        post_name: name.trim(),
+        post_slug: slug.trim(),
+        post_description: description.trim() || null,
+        post_tree_data: draftTree,
+        cover_thumbnail_url: pageImages[0].image_url, // Page đầu tiên = cover, đúng quyết định đã chốt
+        page_images: pageImages,
+      });
+
+      if (publishError || !newPostId) {
+        if (publishError?.code === "23505") {
+          setError("Tên định vị (slug) này bạn đã dùng rồi — chọn tên khác.");
+        } else {
+          setError(publishError?.message ?? "Đăng bài thất bại.");
+        }
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("id", user.id)
+        .single();
+
+      clearDraftPost();
+      router.push(profile ? `/${profile.username}/${slug.trim()}` : "/projects");
+    } catch (err) {
+      console.error("[post] Đăng bài thất bại:", err);
+      setError("Đăng bài thất bại — kiểm tra console.");
+    } finally {
+      setPhase("idle");
     }
   };
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        <button onClick={handleLikeClick} disabled={isToggling} className="flex items-center gap-1 hover:text-foreground">
-          <Heart className={cn("h-3.5 w-3.5", isLiked && "fill-red-500 text-red-500")} />
-          {likeCount}
-        </button>
+    <div className="max-w-lg mx-auto p-6 flex flex-col gap-4">
+      <h1 className="text-lg font-semibold">Đăng bài chia sẻ</h1>
 
-        <button onClick={handleCommentClick} className="flex items-center gap-1 hover:text-foreground">
-          <MessageCircle className="h-3.5 w-3.5" />
-          {commentCount}
-        </button>
-
-        <span className="flex items-center gap-1">
-          <Copy className="h-3.5 w-3.5" />
-          {cloneCount}
-        </span>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <CloneButton postId={postId} onCloned={() => setCloneCount((c) => c + 1)} />
-        <SharePost title={postName} canonicalUrl={canonicalUrl} stopPropagation={variant === "feed"} />
-      </div>
-    </div>
-  );
-}
-```
-
-## Cập nhật `features/feed/components/post-card.tsx` — full file
-
-```tsx
-import Link from "next/link";
-import { FeedPost } from "../utils/get-feed-posts";
-import { ReadonlyNodeTree } from "@/features/node-tree-preview/components/readonly-node-tree";
-import { PostActionsBar } from "@/features/post-actions/components/post-actions-bar";
-import { getPostUrl } from "@/core/utils/site-url";
-
-export function PostCard({ post }: { post: FeedPost }) {
-  const canonicalUrl = getPostUrl(post.authorUsername, post.slug);
-  const detailUrl = `/${post.authorUsername}/${post.slug}`;
-
-  return (
-    <Link href={detailUrl} className="flex border rounded-lg overflow-hidden hover:shadow-md transition-shadow bg-white">
-      <div className="w-2/5 p-3 flex flex-col gap-1.5 min-w-0">
-        <p className="text-sm font-semibold truncate">{post.name}</p>
-        <p className="text-xs text-muted-foreground truncate">bởi {post.authorName}</p>
-
-        <div className="mt-1 border rounded-md p-1.5 bg-muted/30">
-          <ReadonlyNodeTree tree={post.treeData} maxHeight={160} />
-        </div>
-
-        <div className="mt-auto">
-          <PostActionsBar
-            postId={post.id}
-            postName={post.name}
-            canonicalUrl={canonicalUrl}
-            detailUrl={detailUrl}
-            variant="feed"
-            initialLikeCount={post.likeCount}
-            initialIsLiked={post.isLiked}
-            commentCount={post.commentCount}
-            initialCloneCount={post.cloneCount}
-          />
+      <div className="flex flex-col gap-2">
+        <p className="text-xs font-medium text-muted-foreground uppercase">
+          {draftPageCaptures.length} trang sẽ được đăng
+        </p>
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {draftPageCaptures.map((capture, index) => (
+            <div key={capture.pageId} className="shrink-0 w-32">
+              <div className="relative">
+                <img src={capture.dataUrl} alt={capture.pageName} className="w-32 h-20 object-cover rounded-md border" />
+                {index === 0 && <Badge className="absolute top-1 left-1 text-[10px] px-1.5 py-0">Cover</Badge>}
+              </div>
+              <p className="text-xs text-muted-foreground truncate mt-1">{capture.pageName}</p>
+            </div>
+          ))}
         </div>
       </div>
 
-      <div className="w-3/5 bg-muted">
-        {post.thumbnailUrl ? (
-          <img src={post.thumbnailUrl} alt={post.name} className="w-full h-full object-cover" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
-            Không có ảnh
-          </div>
-        )}
-      </div>
-    </Link>
-  );
-}
-```
+      <label className="flex flex-col gap-1 text-sm">
+        Tên bài đăng
+        <Input value={name} onChange={(e) => handleNameChange(e.target.value)} placeholder="VD: Landing Page SaaS" />
+      </label>
 
-## Cập nhật `src/app/(shell)/[username]/[slug]/page.tsx` — full file
+      <label className="flex flex-col gap-1 text-sm">
+        Slug (URL)
+        <Input value={slug} onChange={(e) => setSlug(slugifyPathSegment(e.target.value))} />
+      </label>
 
-```tsx
-import type { Metadata } from "next";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { ReadonlyNodeTree } from "@/features/node-tree-preview/components/readonly-node-tree";
-import { PostActionsBar } from "@/features/post-actions/components/post-actions-bar";
-import { getPostUrl, getFallbackOgImageUrl } from "@/core/utils/site-url";
-import { getPostDetailData } from "@/features/post-detail/utils/get-post-detail-data";
-import { getPostComments } from "@/features/comments/utils/get-post-comments";
-import { CommentsSection } from "@/features/comments/components/comments-section";
-import { TreeNode } from "@/core/types/builder.types";
+      <label className="flex flex-col gap-1 text-sm">
+        Mô tả
+        <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+      </label>
 
-interface PageParams {
-  params: Promise<{ username: string; slug: string }>;
-}
+      {error && <p className="text-sm text-red-500">{error}</p>}
 
-export async function generateMetadata({ params }: PageParams): Promise<Metadata> {
-  const { username, slug } = await params;
-  const { profile, post } = await getPostDetailData(username, slug);
-
-  const canonicalUrl = getPostUrl(profile.username, slug);
-  const authorName = profile.display_name ?? profile.username;
-  const description = post.description || "A visual creation published with 26VisualBuilder.";
-  const imageUrl = post.thumbnail_url || getFallbackOgImageUrl();
-
-  return {
-    title: `${post.name} — ${authorName} | 26VisualBuilder`,
-    description,
-    alternates: { canonical: canonicalUrl },
-    openGraph: {
-      title: post.name,
-      description,
-      url: canonicalUrl,
-      type: "website",
-      images: [{ url: imageUrl }],
-    },
-    twitter: {
-      card: "summary_large_image",
-      title: post.name,
-      description,
-      images: [imageUrl],
-    },
-  };
-}
-
-export default async function PostDetailPage({ params }: PageParams) {
-  const { username, slug } = await params;
-  const { profile, post, likeCount, isLiked } = await getPostDetailData(username, slug);
-  const canonicalUrl = getPostUrl(profile.username, slug);
-  const { comments, totalCount, hasMore } = await getPostComments(post.id, 0);
-
-  return (
-    <div className="max-w-2xl mx-auto p-4 flex flex-col gap-4">
-      <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground w-fit">
-        <ArrowLeft className="h-3.5 w-3.5" />
-        Quay lại Feed
-      </Link>
-
-      {post.thumbnail_url && (
-        <img src={post.thumbnail_url} alt={post.name} className="w-full rounded-lg border" />
-      )}
-
-      <div>
-        <h1 className="text-lg font-semibold">{post.name}</h1>
-        <Link href={`/${profile.username}`} className="text-sm text-muted-foreground hover:underline">
-          bởi {profile.display_name ?? profile.username}
-        </Link>
-      </div>
-
-      {post.description && <p className="text-sm">{post.description}</p>}
-
-      <div>
-        <p className="text-xs font-medium text-muted-foreground uppercase mb-1.5">Cấu trúc dự án</p>
-        <div className="border rounded-md p-2 bg-muted/30">
-          <ReadonlyNodeTree tree={post.tree_data as TreeNode} maxHeight={320} />
-        </div>
-      </div>
-
-      <p className="text-xs text-muted-foreground">
-        Đăng ngày {new Date(post.published_at).toLocaleDateString("vi-VN")}
-      </p>
-
-      <PostActionsBar
-        postId={post.id}
-        postName={post.name}
-        canonicalUrl={canonicalUrl}
-        detailUrl={`/${profile.username}/${slug}`}
-        variant="detail"
-        initialLikeCount={likeCount}
-        initialIsLiked={isLiked}
-        commentCount={totalCount}
-        initialCloneCount={post.clone_count}
-      />
-
-      <div id="comments" className="border-t pt-4">
-        <CommentsSection
-          postId={post.id}
-          initialComments={comments}
-          initialTotalCount={totalCount}
-          initialHasMore={hasMore}
-        />
-      </div>
+      <Button onClick={handlePublish} disabled={phase !== "idle"}>
+        {phase !== "idle" && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+        {phase === "uploading"
+          ? `Đang tải ảnh lên (${uploadedCount}/${draftPageCaptures.length})...`
+          : phase === "saving"
+          ? "Đang lưu bài đăng..."
+          : "Đăng bài"}
+      </Button>
     </div>
   );
 }
 ```
 
 ---
-**Đối chiếu Acceptance Criteria PRD:** Clone primary/filled ✅ · Like toggle optimistic (không delay) ✅ · Comment click đúng 2 hành vi khác nhau theo variant ✅ · Share tái dùng nguyên component cũ, không viết lại ✅ · Không có Statistics section riêng, stats gộp 1 dòng ✅ · Không animation/gradient chói cho Clone (chỉ dùng biến thể mặc định của Button) ✅.
+**Đối chiếu lại toàn bộ yêu cầu ban đầu:** "số ảnh phải bằng số page" được đảm bảo **2 lớp độc lập** — Phase 2 luôn tự chụp đủ mọi Page (không cách nào thiếu từ phía client), và `publish_post()` (Phase 1) chặn lại **thật sự** ở tầng DB nếu 2 số lệch nhau vì bất kỳ lý do gì (đúng nguyên tắc "DB là lớp bảo vệ cuối cùng" đã áp dụng nhất quán suốt project).
 
-**Test nhanh:** Feed → bấm ♡ trên 1 card → phải đổi màu đỏ + tăng số **ngay lập tức** (không đợi network), không điều hướng nhầm sang chi tiết. Bấm 💬 N → phải chuyển sang trang chi tiết **và tự cuộn xuống đúng khối bình luận**. Ở Post Detail, bấm 💬 N → chỉ cuộn mượt, **không** đổi URL/reload. Bấm Clone → nút đổi "Cloning..." → "✓ Cloned" → sau 2s về lại "Clone", đồng thời số `⧉` cạnh đó phải **tăng ngay tại chỗ**, không cần reload trang.
+**Việc còn để ngỏ, không thuộc phạm vi 3 phase này** (đã note từ đầu): Post Detail hiện tại vẫn chỉ hiện `thumbnail_url` (ảnh cover) — chưa render gallery đủ N ảnh từ `post_pages`. Dữ liệu đã có đủ, chỉ là UI hiển thị thêm cần 1 lượt riêng khi bạn muốn làm.
+
+**Test end-to-end:** dựng project có 3 Page (Home/About/Blog) → Editor bấm "Post" → phải thấy Canvas lướt qua cả 3 trang (đúng hiệu ứng đã note ở Phase 2) → vào `/post`, phải thấy đúng 3 ảnh thumbnail, cái đầu có badge "Cover" → điền tên, bấm "Đăng bài" → nút phải chạy qua "Đang tải ảnh lên (1/3)... (2/3)... (3/3)..." → "Đang lưu bài đăng..." → redirect thẳng vào trang chi tiết live vừa đăng. Vào Supabase Table Editor → `posts` có 1 row mới, `post_pages` phải có đúng **3 row** khớp `post_id` đó, mỗi row `page_id` khác nhau đúng 3 Page thật.
