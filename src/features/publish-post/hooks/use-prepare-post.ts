@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useBuilderStore, getPageNamesInOrder } from "@/core/store/builder-store";
+import { useBuilderStore } from "@/core/store/builder-store";
 import { useSaveProject } from "@/features/cloud-save/hooks/use-save-project";
-import { captureActivePageClean } from "@/features/canvas-preview/utils/capture-active-page";
+import { captureAllPagesClean } from "@/features/canvas-preview/utils/capture-all-pages";
 
 export function usePreparePost() {
   const router = useRouter();
@@ -20,8 +20,6 @@ export function usePreparePost() {
 
     setIsPreparing(true);
     try {
-      // posts.project_id bắt buộc trỏ tới project THẬT SỰ đã lưu (RLS policy insert kiểm
-      // tra owner) — tự Save hộ nếu chưa từng lưu, người dùng không cần tự nhớ 2 bước.
       if (!currentProjectId) {
         await saveProject();
       }
@@ -32,16 +30,21 @@ export function usePreparePost() {
         return;
       }
 
-      const thumbnail = await captureActivePageClean({ pixelRatio: 2 });
-      if (!thumbnail) {
+      // Chụp TUẦN TỰ mọi Page (không chỉ trang đang mở) — đúng quyết định "số ảnh phải
+      // bằng số page". Có thể mất vài giây nếu project nhiều trang.
+      const pageCaptures = await captureAllPagesClean({ pixelRatio: 2 });
+      if (pageCaptures === null) {
         window.alert("Không chụp được ảnh Canvas — thử lại.");
+        return;
+      }
+      if (pageCaptures.length === 0) {
+        window.alert("Project chưa có Page nào để đăng bài.");
         return;
       }
 
       useBuilderStore.getState().setDraftPost({
         tree: structuredClone(tree),
-        thumbnail,
-        pageNames: getPageNamesInOrder(tree),
+        pageCaptures,
       });
 
       router.push("/post");

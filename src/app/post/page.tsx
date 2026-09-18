@@ -1,44 +1,36 @@
 "use client";
 
-
-
-
 import { useState } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
 import { useBuilderStore } from "@/core/store/builder-store";
 import { createClient } from "@/core/supabase/client";
 import { useUploadImage } from "@/features/media-upload/hooks/use-upload-image";
 import { slugifyPathSegment } from "@/features/code-generator/utils/path-utils";
+import { dataUrlToFile } from "@/features/publish-post/utils/data-url-to-file";
 
-function dataUrlToFile(dataUrl: string, filename: string): File {
-  const [header, base64] = dataUrl.split(",");
-  const mime = header.match(/data:(.*);base64/)?.[1] ?? "image/png";
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new File([bytes], filename, { type: mime });
-}
+type PublishPhase = "idle" | "uploading" | "saving";
 
 export default function NewPostPage() {
   const router = useRouter();
   const draftTree = useBuilderStore((s) => s.draftPostTree);
-  const draftThumbnail = useBuilderStore((s) => s.draftPostThumbnail);
-  const draftPageNames = useBuilderStore((s) => s.draftPostPageNames);
+  const draftPageCaptures = useBuilderStore((s) => s.draftPostPageCaptures);
   const currentProjectId = useBuilderStore((s) => s.currentProjectId);
   const clearDraftPost = useBuilderStore((s) => s.clearDraftPost);
-  const { uploadImage, isUploading } = useUploadImage();
+  const { uploadImage } = useUploadImage();
 
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
-  const [isPosting, setIsPosting] = useState(false);
+  const [phase, setPhase] = useState<PublishPhase>("idle");
+  const [uploadedCount, setUploadedCount] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
-  if (!draftTree || !draftThumbnail) {
+  if (!draftTree || draftPageCaptures.length === 0) {
     return (
       <div className="flex h-screen items-center justify-center text-center">
         <div>
@@ -56,53 +48,73 @@ export default function NewPostPage() {
     setSlug(slugifyPathSegment(value));
   };
 
-  const handlePost = async () => {
+  const handlePublish = async () => {
     if (!name.trim() || !slug.trim()) {
-      window.alert("Nhập tên bài đăng trước.");
+      setError("Nhập tên bài đăng trước.");
+      return;
+    }
+    if (!currentProjectId) {
+      setError("Thiếu project — quay lại Editor và thử lại.");
       return;
     }
 
-    setIsPosting(true);
+    setError(null);
+    setUploadedCount(0);
+
     try {
-      const thumbnailFile = dataUrlToFile(draftThumbnail, `${slug}.webp`);
-      const publicUrl = await uploadImage(thumbnailFile);
-      if (!publicUrl) {
-        setIsPosting(false);
-        return;
+      setPhase("uploading");
+      const pageImages: { page_id: string; image_url: string }[] = [];
+      for (const capture of draftPageCaptures) {
+        const file = dataUrlToFile(capture.dataUrl, `${capture.pageId}.webp`);
+        const publicUrl = await uploadImage(file);
+        if (!publicUrl) {
+          setError(`Upload ảnh trang "${capture.pageName}" thất bại — thử lại.`);
+          return;
+        }
+        pageImages.push({ page_id: capture.pageId, image_url: publicUrl });
+        setUploadedCount((c) => c + 1);
       }
 
+      setPhase("saving");
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { error } = await supabase.from("posts").insert({
-        project_id: currentProjectId,
-        author_id: user.id,
-        slug: slug.trim(),
-        name: name.trim(),
-        description: description.trim() || null,
-        tree_data: draftTree,
-        thumbnail_url: publicUrl,
-      });
-
-      if (error) {
-        if (error.code === "23505") {
-          window.alert("Tên định vị (slug) này bạn đã dùng rồi — chọn tên khác.");
-        } else {
-          throw error;
-        }
-        setIsPosting(false);
+      if (!user) {
+        setError("Cần đăng nhập.");
         return;
       }
 
+      const { data: newPostId, error: publishError } = await supabase.rpc("publish_post", {
+        target_project_id: currentProjectId,
+        post_name: name.trim(),
+        post_slug: slug.trim(),
+        post_description: description.trim() || null,
+        post_tree_data: draftTree,
+        cover_thumbnail_url: pageImages[0].image_url,
+        page_images: pageImages,
+      });
+
+      if (publishError || !newPostId) {
+        if (publishError?.code === "23505") {
+          setError("Tên định vị (slug) này bạn đã dùng rồi — chọn tên khác.");
+        } else {
+          setError(publishError?.message ?? "Đăng bài thất bại.");
+        }
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("id", user.id)
+        .single();
+
       clearDraftPost();
-      window.alert("Đăng bài thành công!");
-      router.push("/projects");
+      router.push(profile ? `/${profile.username}/${slug.trim()}` : "/projects");
     } catch (err) {
       console.error("[post] Đăng bài thất bại:", err);
-      window.alert("Đăng bài thất bại — kiểm tra console.");
+      setError("Đăng bài thất bại — kiểm tra console.");
     } finally {
-      setIsPosting(false);
+      setPhase("idle");
     }
   };
 
@@ -110,13 +122,22 @@ export default function NewPostPage() {
     <div className="max-w-lg mx-auto p-6 flex flex-col gap-4">
       <h1 className="text-lg font-semibold">Đăng bài chia sẻ</h1>
 
-      <div className="relative w-full aspect-video rounded-md border overflow-hidden">
-        <Image src={draftThumbnail} alt="Preview" fill className="object-cover" />
+      <div className="flex flex-col gap-2">
+        <p className="text-xs font-medium text-muted-foreground uppercase">
+          {draftPageCaptures.length} trang sẽ được đăng
+        </p>
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {draftPageCaptures.map((capture, index) => (
+            <div key={capture.pageId} className="shrink-0 w-32">
+              <div className="relative">
+                <img src={capture.dataUrl} alt={capture.pageName} className="w-32 h-20 object-cover rounded-md border" />
+                {index === 0 && <Badge className="absolute top-1 left-1 text-[10px] px-1.5 py-0">Cover</Badge>}
+              </div>
+              <p className="text-xs text-muted-foreground truncate mt-1">{capture.pageName}</p>
+            </div>
+          ))}
+        </div>
       </div>
-
-      <p className="text-xs text-muted-foreground">
-        Gồm {draftPageNames.length} trang: {draftPageNames.join(", ")}
-      </p>
 
       <label className="flex flex-col gap-1 text-sm">
         Tên bài đăng
@@ -133,9 +154,15 @@ export default function NewPostPage() {
         <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
       </label>
 
-      <Button onClick={handlePost} disabled={isPosting || isUploading}>
-        {(isPosting || isUploading) && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
-        {isPosting || isUploading ? "Đang đăng..." : "Đăng bài"}
+      {error && <p className="text-sm text-red-500">{error}</p>}
+
+      <Button onClick={handlePublish} disabled={phase !== "idle"}>
+        {phase !== "idle" && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+        {phase === "uploading"
+          ? `Đang tải ảnh lên (${uploadedCount}/${draftPageCaptures.length})...`
+          : phase === "saving"
+          ? "Đang lưu bài đăng..."
+          : "Đăng bài"}
       </Button>
     </div>
   );
