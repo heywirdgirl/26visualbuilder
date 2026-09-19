@@ -8,6 +8,7 @@ import { getPostUrl, getFallbackOgImageUrl } from "@/core/utils/site-url";
 import { getPostDetailData } from "@/features/post-detail/utils/get-post-detail-data";
 import { getPostComments } from "@/features/comments/utils/get-post-comments";
 import { CommentsSection } from "@/features/comments/components/comments-section";
+import { PostDetailGallery } from "@/features/post-gallery/components/post-detail-gallery";
 
 interface PageParams {
   params: Promise<{ username: string; slug: string }>;
@@ -44,7 +45,7 @@ export async function generateMetadata({ params }: PageParams): Promise<Metadata
 
 export default async function PostDetailPage({ params }: PageParams) {
   const { username, slug } = await params;
-  const { profile, post, likeCount, isLiked } = await getPostDetailData(username, slug);
+  const { profile, post, likeCount, isLiked, gallery } = await getPostDetailData(username, slug);
   const canonicalUrl = getPostUrl(profile.username, slug);
   const { comments, totalCount, hasMore } = await getPostComments(post.id, 0);
 
@@ -55,9 +56,7 @@ export default async function PostDetailPage({ params }: PageParams) {
         Quay lại Feed
       </Link>
 
-      {post.thumbnail_url && (
-        <img src={post.thumbnail_url} alt={post.name} className="w-full rounded-lg border" />
-      )}
+      <PostDetailGallery images={gallery} />
 
       <div>
         <h1 className="text-lg font-semibold">{post.name}</h1>
