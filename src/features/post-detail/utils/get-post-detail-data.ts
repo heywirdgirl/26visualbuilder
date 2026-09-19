@@ -1,6 +1,8 @@
 import { cache } from "react";
 import { notFound } from "next/navigation";
+import { TreeNode } from "@/core/types/builder.types";
 import { createClient } from "@/core/supabase/server";
+import { buildGallery, GalleryImage } from "@/features/post-gallery/utils/build-gallery";
 import { resolveProfileByUsername } from "@/features/profile/utils/resolve-profile-by-username";
 
 export const getPostDetailData = cache(async (username: string, slug: string) => {
@@ -34,5 +36,17 @@ export const getPostDetailData = cache(async (username: string, slug: string) =>
     isLiked = !!likeRow;
   }
 
-  return { profile, post, likeCount: likeCount ?? 0, isLiked };
+  const { data: postPages } = await supabase
+    .from("post_pages")
+    .select("page_id, image_url")
+    .eq("post_id", post.id);
+
+  const gallery: GalleryImage[] = buildGallery(
+    post.tree_data as TreeNode,
+    postPages ?? [],
+    post.thumbnail_url,
+    post.name
+  );
+
+  return { profile, post, likeCount: likeCount ?? 0, isLiked, gallery };
 });

@@ -3,6 +3,7 @@ import { FeedPost } from "../utils/get-feed-posts";
 import { ReadonlyNodeTree } from "@/features/node-tree-preview/components/readonly-node-tree";
 import { PostActionsBar } from "@/features/post-actions/components/post-actions-bar";
 import { getPostUrl } from "@/core/utils/site-url";
+import { FeedImageCarousel } from "@/features/post-gallery/components/feed-image-carousel";
 
 export function PostCard({ post }: { post: FeedPost }) {
   const canonicalUrl = getPostUrl(post.authorUsername, post.slug);
@@ -34,13 +35,7 @@ export function PostCard({ post }: { post: FeedPost }) {
       </div>
 
       <div className="w-3/5 bg-muted">
-        {post.thumbnailUrl ? (
-          <img src={post.thumbnailUrl} alt={post.name} className="w-full h-full object-cover" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
-            Không có ảnh
-          </div>
-        )}
+        <FeedImageCarousel images={post.gallery} />
       </div>
     </Link>
   );
