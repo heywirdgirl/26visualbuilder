@@ -1,10 +1,10 @@
-
+// src/app/(shell)/page.tsx
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Wand2 } from "lucide-react";
 import { getFeedPosts } from "@/features/feed/utils/get-feed-posts";
 import { PostCard } from "@/features/feed/components/post-card";
-import { LoginButton } from "@/features/auth/components/login-button";
+
 
 export default async function FeedPage() {
   const posts = await getFeedPosts();
@@ -20,7 +20,7 @@ export default async function FeedPage() {
               Mở Editor
             </Button>
           </Link>
-          <LoginButton />
+          
         </div>
       </div>
 

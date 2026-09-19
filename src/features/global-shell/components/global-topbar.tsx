@@ -1,3 +1,6 @@
+
+// src/features/global-shell/components/global-topbar.tsx
+
 "use client";
 
 import Link from "next/link";
@@ -6,6 +9,7 @@ import { Menu } from "lucide-react";
 import { useBuilderStore } from "@/core/store/builder-store";
 import { useRecentProjects } from "../hooks/use-recent-projects";
 import { ProjectSidebar } from "./project-sidebar";
+import { LoginButton } from "@/features/auth/components/login-button";
 
 export function GlobalTopbar() {
   const user = useBuilderStore((s) => s.user);
@@ -33,27 +37,32 @@ export function GlobalTopbar() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 flex items-center justify-between border-b bg-white/90 backdrop-blur px-4 py-2.5">
-        <Link href="/" className="text-sm font-semibold">26VisualBuilder</Link>
-        <button
-          type="button"
-          onClick={() => setSidebarOpen(true)}
-          className="flex items-center gap-1.5 text-sm border rounded-md px-2.5 py-1.5 hover:bg-muted"
-          aria-label="Open projects"
-        >
-          <Menu className="h-4 w-4" />
-          {user && (
-            <span className="relative">
-              {projectCount}
-              {showBump && (
-                <span className="absolute -top-3 -right-3 text-[10px] font-bold text-green-600 animate-bounce">
-                  +1
-                </span>
-              )}
+      
+<header className="sticky top-0 z-40 flex items-center justify-between border-b bg-white/90 backdrop-blur px-4 py-2.5">
+  <Link href="/" className="text-sm font-semibold">Visual</Link>
+
+  <div className="flex items-center gap-2">
+    <LoginButton />
+    <button
+      type="button"
+      onClick={() => setSidebarOpen(true)}
+      className="flex items-center gap-1.5 text-sm border rounded-md px-2.5 py-1.5 hover:bg-muted"
+      aria-label="Open projects"
+    >
+      <Menu className="h-4 w-4" />
+      {user && (
+        <span className="relative">
+          {projectCount}
+          {showBump && (
+            <span className="absolute -top-3 -right-3 text-[10px] font-bold text-green-600 animate-bounce">
+              +1
             </span>
           )}
-        </button>
-      </header>
+        </span>
+      )}
+    </button>
+  </div>
+</header>
       {sidebarOpen && <ProjectSidebar />}
     </>
   );
