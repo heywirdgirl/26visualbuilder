@@ -25,7 +25,7 @@ export function PostCard({ post }: { post: FeedPost }) {
         </div>
 
         <div className="rounded-lg border border-zinc-200/70 bg-zinc-50/60 p-1.5">
-          <ReadonlyNodeTree tree={post.treeData} maxHeight={96} />
+          <ReadonlyNodeTree tree={post.treeData} maxHeight={300} />
         </div>
       </div>
 
