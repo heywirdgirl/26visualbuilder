@@ -1,283 +1,240 @@
-Tham khảo 2 pattern phổ biến, mỗi nơi hợp với 1 loại không gian khác nhau:
-- **Feed Card** (khung nhỏ, nằm trong list cuộn) — kiểu **Instagram**: carousel vuốt/chạm để chuyển ảnh, chấm tròn + số đếm "1/3" ở góc.
-- **Post Detail** (trang riêng, nhiều chỗ hơn) — kiểu **Airbnb/Product Hunt**: 1 ảnh lớn (hero) + dải thumbnail bên dưới kèm tên trang, bấm thumbnail để đổi ảnh lớn.
+Đồng ý với so sánh Apple vs Material — đúng hướng cho 1 dev tool (Framer/Vercel/Linear/Raycast là tham chiếu chuẩn xác), và giải quyết đúng luôn vấn đề bố cục: chuyển từ layout **ngang** (trái/phải, ép `PostActionsBar` vào cột hẹp 2/5) sang layout **dọc** (ảnh full-width trên cùng → nội dung → actions full-width dưới cùng) là đúng cấu trúc Instagram/Facebook bạn muốn.
 
-**1 điểm cần xử lý trước khi code:** bài đăng **cũ** (đăng trước lượt tính năng multi-page vừa xong) chỉ có `thumbnail_url`, chưa có row nào trong `post_pages` — cần fallback về hiển thị đúng 1 ảnh đó, không được để trống.
+**1 giới hạn cần nói rõ trước khi code:** mình **chưa từng thấy** nội dung thật hiện tại của `globals.css`/`layout.tsx` trong cuộc trò chuyện này (chỉ viết bản gốc tối giản từ V1, sau đó `npx shadcn add` có thể đã tự chèn thêm biến theme riêng mà mình không nắm được). Sửa token màu toàn cục (`--primary`...) mà đoán sai cấu trúc file dễ phá hỏng theme hiện có — rủi ro y hệt các lỗi `componentDef`/`env` từng gặp khi patch mù. Nên lần này mình làm **2 phần tách bạch**:
 
-## File mới: `features/post-gallery/utils/build-gallery.ts`
+- **Làm ngay, an toàn 100%:** viết lại `PostCard`/`PostActionsBar`/`SharePost` bằng class Tailwind zinc/Apple **tường minh** (không phụ thuộc theme token nào cả) — tự nó đã đúng style Apple ngay lập tức, không cần đụng `globals.css`.
+- **Để sau, cần bạn gửi file thật:** muốn tông đen-trắng này lan ra **mọi nút khác trong app** (không chỉ card này) thì cần sửa token gốc — gửi mình nội dung `globals.css` hiện tại để patch chính xác, tránh đoán mù.
 
-```typescript
-import { TreeNode } from "@/core/types/builder.types";
-import { getPageNodes } from "@/core/store/builder-store";
-
-export interface GalleryImage {
-  pageId: string;
-  pageName: string;
-  imageUrl: string;
-}
-
-// Sắp xếp lại theo ĐÚNG thứ tự Page thật trong tree_data (thứ tự lưu trong post_pages
-// không đảm bảo khớp thứ tự cây) — cùng nguyên tắc "tree_data là nguồn sự thật" đã dùng
-// cho pageNames trước đây.
-export function buildGallery(
-  treeData: TreeNode,
-  postPages: { page_id: string; image_url: string }[],
-  fallbackThumbnailUrl: string | null,
-  fallbackName: string
-): GalleryImage[] {
-  const imageMap = new Map(postPages.map((p) => [p.page_id, p.image_url]));
-  const pages = getPageNodes(treeData);
-
-  const gallery = pages
-    .map((page) => {
-      const imageUrl = imageMap.get(page.id);
-      if (!imageUrl) return null;
-      const pageName = String((page.props as { name?: string }).name ?? "Page");
-      return { pageId: page.id, pageName, imageUrl };
-    })
-    .filter((g): g is GalleryImage => g !== null);
-
-  // Bài đăng cũ (trước tính năng multi-page) không có row nào trong post_pages —
-  // fallback về đúng 1 ảnh cover cũ, không để trống.
-  if (gallery.length === 0 && fallbackThumbnailUrl) {
-    return [{ pageId: "cover", pageName: fallbackName, imageUrl: fallbackThumbnailUrl }];
-  }
-  return gallery;
-}
-```
-
-## Patch `features/feed/utils/get-feed-posts.ts`
-
-Thêm import:
-```typescript
-import { buildGallery, GalleryImage } from "@/features/post-gallery/utils/build-gallery";
-```
-
-Thêm vào interface:
-```typescript
-export interface FeedPost {
-  // ...giữ nguyên các field cũ
-  gallery: GalleryImage[]; // 👈 thêm
-}
-```
-
-Thêm batch query (cạnh khối `Promise.all` đã có):
-```typescript
-const { data: allPostPages } = await supabase
-  .from("post_pages")
-  .select("post_id, page_id, image_url")
-  .in("post_id", postIds);
-
-const postPagesMap = new Map<string, { page_id: string; image_url: string }[]>();
-(allPostPages ?? []).forEach((pp) => {
-  const arr = postPagesMap.get(pp.post_id) ?? [];
-  arr.push({ page_id: pp.page_id, image_url: pp.image_url });
-  postPagesMap.set(pp.post_id, arr);
-});
-```
-
-Thêm vào object trả về cuối hàm:
-```typescript
-gallery: buildGallery(
-  post.tree_data as TreeNode,
-  postPagesMap.get(post.id) ?? [],
-  post.thumbnail_url,
-  post.name
-),
-```
-
-## Patch `features/post-detail/utils/get-post-detail-data.ts`
-
-Thêm import:
-```typescript
-import { buildGallery, GalleryImage } from "@/features/post-gallery/utils/build-gallery";
-```
-
-Thêm vào trong hàm `cache(async (...) => {...})`, sau đoạn tính `isLiked`:
-```typescript
-const { data: postPages } = await supabase
-  .from("post_pages")
-  .select("page_id, image_url")
-  .eq("post_id", post.id);
-
-const gallery: GalleryImage[] = buildGallery(
-  post.tree_data as TreeNode,
-  postPages ?? [],
-  post.thumbnail_url,
-  post.name
-);
-```
-
-Đổi dòng `return`:
-```typescript
-return { profile, post, likeCount: likeCount ?? 0, isLiked, gallery };
-```
-
-## File mới: `features/post-gallery/components/feed-image-carousel.tsx`
-
-```tsx
-"use client";
-
-import { useRef, useState } from "react";
-import { GalleryImage } from "../utils/build-gallery";
-import { cn } from "@/core/utils/cn";
-
-export function FeedImageCarousel({ images }: { images: GalleryImage[] }) {
-  const [index, setIndex] = useState(0);
-  const touchStartX = useRef<number | null>(null);
-
-  if (images.length === 0) {
-    return (
-      <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
-        Không có ảnh
-      </div>
-    );
-  }
-
-  const goTo = (e: React.MouseEvent, i: number) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIndex(i);
-  };
-  const handlePrev = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIndex((i) => (i - 1 + images.length) % images.length);
-  };
-  const handleNext = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIndex((i) => (i + 1) % images.length);
-  };
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
-  };
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartX.current === null) return;
-    const deltaX = e.changedTouches[0].clientX - touchStartX.current;
-    if (Math.abs(deltaX) > 40) {
-      setIndex((i) => (deltaX < 0 ? (i + 1) % images.length : (i - 1 + images.length) % images.length));
-    }
-    touchStartX.current = null;
-  };
-
-  const current = images[index];
-
-  return (
-    <div className="relative w-full h-full select-none" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-      <img src={current.imageUrl} alt={current.pageName} className="w-full h-full object-cover" />
-
-      {images.length > 1 && (
-        <>
-          {/* Nút trái/phải trong suốt phủ 1/3 mỗi bên — vuốt hoặc bấm đều chuyển được,
-              1/3 GIỮA không có nút, để tap vào giữa ảnh vẫn điều hướng sang trang chi
-              tiết như bình thường (PostCard đang nằm trong <Link>). */}
-          <button onClick={handlePrev} className="absolute inset-y-0 left-0 w-1/3" aria-label="Ảnh trước" />
-          <button onClick={handleNext} className="absolute inset-y-0 right-0 w-1/3" aria-label="Ảnh sau" />
-
-          <div className="absolute top-2 right-2 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-full">
-            {index + 1}/{images.length}
-          </div>
-
-          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
-            {images.map((_, i) => (
-              <button
-                key={i}
-                onClick={(e) => goTo(e, i)}
-                className={cn("h-1.5 rounded-full transition-all", i === index ? "w-4 bg-white" : "w-1.5 bg-white/50")}
-                aria-label={`Ảnh ${i + 1}`}
-              />
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-```
-
-## File mới: `features/post-gallery/components/post-detail-gallery.tsx`
+## Cập nhật `features/share-post/components/share-post.tsx` — thêm chế độ icon-only
 
 ```tsx
 "use client";
 
 import { useState } from "react";
-import { GalleryImage } from "../utils/build-gallery";
+import { Button } from "@/components/ui/button";
+import { Share2, Check, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/core/utils/cn";
 
-export function PostDetailGallery({ images }: { images: GalleryImage[] }) {
-  const [index, setIndex] = useState(0);
-  if (images.length === 0) return null;
-  const current = images[index];
+interface SharePostProps {
+  title: string;
+  canonicalUrl: string;
+  className?: string;
+  stopPropagation?: boolean;
+  iconOnly?: boolean; // 👈 mới — dùng cho hàng action gọn (feed card), giữ label đầy đủ ở Post Detail
+}
+
+export function SharePost({ title, canonicalUrl, className, stopPropagation, iconOnly }: SharePostProps) {
+  const [isSharing, setIsSharing] = useState(false);
+  const [justCopied, setJustCopied] = useState(false);
+
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(canonicalUrl);
+      toast.success("Link copied");
+      setJustCopied(true);
+      setTimeout(() => setJustCopied(false), 2000);
+    } catch (err) {
+      console.error("[share] Clipboard copy thất bại:", err);
+      toast.error("Unable to copy link. Please copy the URL manually.", {
+        description: canonicalUrl,
+        duration: 8000,
+      });
+    }
+  };
+
+  const handleShare = async (e: React.MouseEvent) => {
+    if (stopPropagation) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setIsSharing(true);
+    try {
+      if (typeof navigator !== "undefined" && navigator.share) {
+        try {
+          await navigator.share({ title, url: canonicalUrl });
+          return;
+        } catch (err) {
+          if (err instanceof Error && err.name === "AbortError") return;
+          console.error("[share] Web Share API thất bại, fallback Copy Link:", err);
+        }
+      }
+      await copyToClipboard();
+    } finally {
+      setIsSharing(false);
+    }
+  };
 
   return (
-    <div className="flex flex-col gap-2">
-      <img src={current.imageUrl} alt={current.pageName} className="w-full rounded-lg border object-cover" />
-
-      {images.length > 1 && (
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {images.map((img, i) => (
-            <button
-              key={img.pageId}
-              onClick={() => setIndex(i)}
-              className={cn("shrink-0 flex flex-col items-center gap-1", i === index ? "opacity-100" : "opacity-60 hover:opacity-100")}
-            >
-              <img
-                src={img.imageUrl}
-                alt={img.pageName}
-                className={cn("w-20 h-14 object-cover rounded-md border-2", i === index ? "border-primary" : "border-transparent")}
-              />
-              <span className="text-[10px] text-muted-foreground truncate max-w-[80px]">{img.pageName}</span>
-            </button>
-          ))}
-        </div>
+    <Button
+      size={iconOnly ? "icon" : "sm"}
+      variant="outline"
+      className={cn(iconOnly && "h-9 w-9 shrink-0 rounded-full border-zinc-200", className)}
+      disabled={isSharing}
+      onClick={handleShare}
+    >
+      {isSharing ? (
+        <Loader2 className={cn("h-3.5 w-3.5 animate-spin", !iconOnly && "mr-1.5")} />
+      ) : justCopied ? (
+        <Check className={cn("h-3.5 w-3.5", !iconOnly && "mr-1.5")} />
+      ) : (
+        <Share2 className={cn("h-3.5 w-3.5", !iconOnly && "mr-1.5")} />
       )}
+      {!iconOnly && (justCopied ? "Copied" : "Share")}
+    </Button>
+  );
+}
+```
+
+## Cập nhật `features/post-actions/components/post-actions-bar.tsx` — full file
+
+```tsx
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Heart, MessageCircle, Copy } from "lucide-react";
+import { useToggleLike } from "@/features/likes/hooks/use-toggle-like";
+import { CloneButton } from "@/features/publish-post/components/clone-button";
+import { SharePost } from "@/features/share-post/components/share-post";
+import { cn } from "@/core/utils/cn";
+
+interface PostActionsBarProps {
+  postId: string;
+  postName: string;
+  canonicalUrl: string;
+  detailUrl: string;
+  variant: "feed" | "detail";
+  initialLikeCount: number;
+  initialIsLiked: boolean;
+  commentCount: number;
+  initialCloneCount: number;
+}
+
+export function PostActionsBar({
+  postId,
+  postName,
+  canonicalUrl,
+  detailUrl,
+  variant,
+  initialLikeCount,
+  initialIsLiked,
+  commentCount,
+  initialCloneCount,
+}: PostActionsBarProps) {
+  const router = useRouter();
+  const { isLiked, likeCount, isToggling, toggleLike } = useToggleLike(postId, initialIsLiked, initialLikeCount);
+  const [cloneCount, setCloneCount] = useState(initialCloneCount);
+
+  const handleLikeClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    void toggleLike();
+  };
+
+  const handleCommentClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (variant === "feed") {
+      router.push(`${detailUrl}#comments`);
+    } else {
+      document.getElementById("comments")?.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-4 text-xs text-zinc-500">
+        <button onClick={handleLikeClick} disabled={isToggling} className="flex items-center gap-1.5 transition-colors hover:text-zinc-900">
+          <Heart className={cn("h-4 w-4 transition-all", isLiked && "fill-red-500 text-red-500")} />
+          <span className="tabular-nums">{likeCount}</span>
+        </button>
+
+        <button onClick={handleCommentClick} className="flex items-center gap-1.5 transition-colors hover:text-zinc-900">
+          <MessageCircle className="h-4 w-4" />
+          <span className="tabular-nums">{commentCount}</span>
+        </button>
+
+        <span className="flex items-center gap-1.5">
+          <Copy className="h-4 w-4" />
+          <span className="tabular-nums">{cloneCount}</span>
+        </span>
+      </div>
+
+      <div className="flex items-center gap-2">
+        {/* Class ghi đè trực tiếp -> đảm bảo đen-trắng monochrome NGAY LẬP TỨC, không
+            phụ thuộc theme token gốc (chưa rõ đang là gì) — an toàn theo lý do đã nêu. */}
+        <CloneButton
+          postId={postId}
+          onCloned={() => setCloneCount((c) => c + 1)}
+          className="flex-1 rounded-lg bg-zinc-900 text-white hover:bg-zinc-800"
+        />
+        <SharePost title={postName} canonicalUrl={canonicalUrl} stopPropagation={variant === "feed"} iconOnly />
+      </div>
     </div>
   );
 }
 ```
 
-## Patch `features/feed/components/post-card.tsx`
+## Cập nhật `features/feed/components/post-card.tsx` — full file
 
 ```tsx
-// Đổi import:
+import Link from "next/link";
+import { FeedPost } from "../utils/get-feed-posts";
+import { ReadonlyNodeTree } from "@/features/node-tree-preview/components/readonly-node-tree";
+import { PostActionsBar } from "@/features/post-actions/components/post-actions-bar";
 import { FeedImageCarousel } from "@/features/post-gallery/components/feed-image-carousel";
+import { getPostUrl } from "@/core/utils/site-url";
 
-// Đổi khối ảnh cũ:
-<div className="w-3/5 bg-muted">
-  {post.thumbnailUrl ? (
-    <img src={post.thumbnailUrl} alt={post.name} className="w-full h-full object-cover" />
-  ) : (
-    <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
-      Không có ảnh
-    </div>
-  )}
-</div>
-// Thành:
-<div className="w-3/5 bg-muted">
-  <FeedImageCarousel images={post.gallery} />
-</div>
-```
+export function PostCard({ post }: { post: FeedPost }) {
+  const canonicalUrl = getPostUrl(post.authorUsername, post.slug);
+  const detailUrl = `/${post.authorUsername}/${post.slug}`;
 
-## Patch `src/app/(shell)/[username]/[slug]/page.tsx`
+  return (
+    <Link
+      href={detailUrl}
+      className="block overflow-hidden rounded-xl border border-zinc-200/80 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-shadow hover:shadow-[0_4px_16px_rgba(0,0,0,0.07)]"
+    >
+      {/* Media — full-width trên cùng, đúng kiểu Instagram/Facebook, thay hẳn layout
+          trái/phải cũ vốn khiến PostActionsBar bị ép vào cột hẹp. */}
+      <div className="aspect-square w-full bg-zinc-100">
+        <FeedImageCarousel images={post.gallery} />
+      </div>
 
-```tsx
-// Đổi destructure:
-const { profile, post, likeCount, isLiked } = await getPostDetailData(username, slug);
-// Thành:
-const { profile, post, likeCount, isLiked, gallery } = await getPostDetailData(username, slug);
+      <div className="flex flex-col gap-2.5 p-4">
+        <div>
+          <p className="truncate text-sm font-semibold text-zinc-900">{post.name}</p>
+          <p className="truncate text-xs text-zinc-500">by {post.authorName}</p>
+        </div>
 
-// Đổi import:
-import { PostDetailGallery } from "@/features/post-gallery/components/post-detail-gallery";
+        <div className="rounded-lg border border-zinc-200/70 bg-zinc-50/60 p-1.5">
+          <ReadonlyNodeTree tree={post.treeData} maxHeight={96} />
+        </div>
+      </div>
 
-// Đổi khối ảnh cũ:
-{post.thumbnail_url && (
-  <img src={post.thumbnail_url} alt={post.name} className="w-full rounded-lg border" />
-)}
-// Thành:
-<PostDetailGallery images={gallery} />
+      {/* Actions — full-width, tách hẳn bằng viền mảnh 1px kiểu Apple (không dùng
+          shadow đậm), không còn bị bóp trong cột trái. */}
+      <div className="border-t border-zinc-200/70 px-4 py-3">
+        <PostActionsBar
+          postId={post.id}
+          postName={post.name}
+          canonicalUrl={canonicalUrl}
+          detailUrl={detailUrl}
+          variant="feed"
+          initialLikeCount={post.likeCount}
+          initialIsLiked={post.isLiked}
+          commentCount={post.commentCount}
+          initialCloneCount={post.cloneCount}
+        />
+      </div>
+    </Link>
+  );
+}
 ```
 
 ---
-**Test nhanh:** vào Feed → post nhiều trang phải hiện carousel với chấm tròn + "1/N" góc phải → vuốt ngang (mobile) hoặc bấm 2 bên trái/phải ảnh → chuyển đúng ảnh, **không** điều hướng nhầm sang chi tiết. Bấm đúng giữa ảnh → phải điều hướng bình thường sang trang chi tiết. Ở đó, phải thấy ảnh lớn + dải thumbnail có tên từng trang bên dưới, bấm thumbnail → đổi ảnh lớn, viền tím đánh dấu ảnh đang chọn. Vào 1 bài đăng **cũ** (trước tính năng này) → vẫn phải hiện đúng 1 ảnh cover, không lỗi, không trống.
+**Không cần sửa gì ở `PostDetailPage`** — `PostActionsBar` đã dùng chung, tự cập nhật giao diện mới ở cả 2 nơi (đúng nguyên tắc "1 component, không duplicate" đã giữ xuyên suốt).
+
+**Test nhanh:** vào Feed → card giờ phải xếp dọc: ảnh vuông full-width trên cùng → tên/tác giả → khung cây Node nhỏ gọn → viền mảnh ngăn cách → hàng ♡💬⧉ → nút Clone đen full-width + icon Share tròn cạnh đó. Bấm ♡/💬/Clone/Share đều **không** được điều hướng nhầm sang trang chi tiết (test kỹ vì cấu trúc DOM đã đổi hoàn toàn). Vào Post Detail → `PostActionsBar` ở đó cũng phải đổi theo đúng style mới (Share vẫn hiện label "Share" đầy đủ, không icon-only, vì không truyền `iconOnly` ở lời gọi đó).
+
+Muốn mở rộng tông màu này ra toàn app (Topbar, Editor, Profile...), gửi mình nội dung `globals.css` hiện tại để patch chính xác token gốc.
