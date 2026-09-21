@@ -29,7 +29,7 @@ export default async function FeedPage() {
           Chưa có bài đăng nào — hãy là người đầu tiên chia sẻ!
         </p>
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-18">
           {posts.map((post) => (
             <PostCard key={post.id} post={post} />
           ))}
