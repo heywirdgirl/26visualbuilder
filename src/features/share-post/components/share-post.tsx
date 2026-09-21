@@ -11,9 +11,10 @@ interface SharePostProps {
   canonicalUrl: string;
   className?: string;
   stopPropagation?: boolean;
+  iconOnly?: boolean;
 }
 
-export function SharePost({ title, canonicalUrl, className, stopPropagation }: SharePostProps) {
+export function SharePost({ title, canonicalUrl, className, stopPropagation, iconOnly }: SharePostProps) {
   const [isSharing, setIsSharing] = useState(false);
   const [justCopied, setJustCopied] = useState(false);
 
@@ -56,15 +57,21 @@ export function SharePost({ title, canonicalUrl, className, stopPropagation }: S
   };
 
   return (
-    <Button size="sm" variant="outline" className={cn(className)} disabled={isSharing} onClick={handleShare}>
+    <Button
+      size={iconOnly ? "icon" : "sm"}
+      variant="outline"
+      className={cn(iconOnly && "h-9 w-9 shrink-0 rounded-full border-zinc-200", className)}
+      disabled={isSharing}
+      onClick={handleShare}
+    >
       {isSharing ? (
-        <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+        <Loader2 className={cn("h-3.5 w-3.5 animate-spin", !iconOnly && "mr-1.5")} />
       ) : justCopied ? (
-        <Check className="h-3.5 w-3.5 mr-1.5" />
+        <Check className={cn("h-3.5 w-3.5", !iconOnly && "mr-1.5")} />
       ) : (
-        <Share2 className="h-3.5 w-3.5 mr-1.5" />
+        <Share2 className={cn("h-3.5 w-3.5", !iconOnly && "mr-1.5")} />
       )}
-      {justCopied ? "Copied" : "Share"}
+      {!iconOnly && (justCopied ? "Copied" : "Share")}
     </Button>
   );
 }
