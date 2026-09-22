@@ -37,8 +37,9 @@ export function GlobalTopbar() {
 
   return (
     <>
-      
-<header className="sticky top-0 z-40 flex items-center justify-between border-b bg-white/90 backdrop-blur px-4 py-2.5">
+
+// Thay 'sticky' bằng 'fixed top-0 left-0 right-0 w-full h-14 z-50'
+<header className="fixed top-0 left-0 right-0 z-50 flex h-14 items-center justify-between border-b bg-white/90 backdrop-blur px-4 py-2.5">
   <Link href="/" className="text-sm font-semibold">Visual</Link>
 
   <div className="flex items-center gap-2">
@@ -63,6 +64,7 @@ export function GlobalTopbar() {
     </button>
   </div>
 </header>
+
       {sidebarOpen && <ProjectSidebar />}
     </>
   );
