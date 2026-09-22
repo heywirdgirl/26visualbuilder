@@ -45,7 +45,12 @@ export function LoginButton() {
         </button>
       </PopoverTrigger>
 
-      <PopoverContent align="end" className="w-56 p-0">
+      <PopoverContent 
+        align="start" 
+        side="bottom" 
+        sideOffset={4}
+        className="w-50 p-0 z-[7000]"
+      >
         <div className="flex items-center gap-2.5 border-b p-3">
           <Avatar size="sm">
             {avatarUrl && <AvatarImage src={avatarUrl} alt={displayName} />}
