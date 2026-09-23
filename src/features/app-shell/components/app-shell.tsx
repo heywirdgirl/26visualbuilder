@@ -3,12 +3,14 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronDown, FolderKanban, Newspaper, Download } from "lucide-react";
+import { useState } from "react";
+
+import { ChevronDown, FolderKanban, Newspaper, Download,ImageDown } from "lucide-react";
 import { TreeView } from "@/features/nodes-tree/components/tree-view";
 import { InspectorPanel } from "@/features/inspector/components/inspector-panel";
 import { PreviewWorkspace } from "@/features/canvas-preview/components/preview-workspace";
 import { CodeModal } from "@/features/code-generator/components/code-modal";
-import { ExportImageButton } from "@/features/export-image/components/export-image-button";
+import { ExportImageDialog } from "@/features/export-image/components/export-image-dialog";
 import { ExportProjectButton } from "@/features/export-project/components/export-project-button";
 import { SaveProjectButton } from "@/features/cloud-save/components/save-project-button";
 import { PostProjectButton } from "@/features/publish-post/components/post-project-button";
@@ -25,8 +27,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export function AppShell() {
+   const [exportImageOpen, setExportImageOpen] = useState(false);
   useTreeShortcuts();
-
   const menuHidden = useBuilderStore((s) => s.menuHidden);
   const toggleMenuHidden = useBuilderStore((s) => s.toggleMenuHidden);
   const user = useBuilderStore((s) => s.user);
@@ -75,10 +77,9 @@ export function AppShell() {
           sideOffset={4} 
           className="w-44 z-[7000]"
         >
-          <DropdownMenuItem asChild className="cursor-pointer">
-            <div className="w-full">
-              <ExportImageButton />
-            </div>
+          <DropdownMenuItem onSelect={() => setExportImageOpen(true)} className="cursor-pointer">
+            <ImageDown className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
+            Export Image
           </DropdownMenuItem>
           <DropdownMenuItem asChild className="cursor-pointer">
             <div className="w-full">
@@ -125,6 +126,7 @@ export function AppShell() {
         Visual
       </button>
       )}
+        <ExportImageDialog open={exportImageOpen} onOpenChange={setExportImageOpen} />
     </div>
   );
 }
