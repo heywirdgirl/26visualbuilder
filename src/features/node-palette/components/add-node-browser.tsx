@@ -85,7 +85,7 @@ export function AddNodeBrowser({
 
   return (
     <Dialog open={open} onOpenChange={(v) => (v ? onOpenChange(v) : handleClose())}>
-      <DialogContent className="max-w-md flex flex-col max-h-[80vh]">
+      <DialogContent className="max-w-md flex flex-col max-h-[80vh] z-[7000]">
         <DialogHeader>
           <DialogTitle>Add Node</DialogTitle>
         </DialogHeader>

@@ -50,8 +50,8 @@ export function FeedImageCarousel({ images }: { images: GalleryImage[] }) {
   const current = images[index];
 
   return (
-    <div className="relative w-full h-full select-none" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-      <img src={current.imageUrl} alt={current.pageName} className="w-full h-full object-cover" />
+    <div className="relative w-full h-full flex items-center justify-center select-none" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+      <img src={current.imageUrl} alt={current.pageName} className="max-w-full max-h-full object-contain" />
 
       {images.length > 1 && (
         <>
