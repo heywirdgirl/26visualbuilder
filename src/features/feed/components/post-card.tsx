@@ -14,8 +14,8 @@ export function PostCard({ post }: { post: FeedPost }) {
       href={detailUrl}
       className="block overflow-hidden rounded-xl border border-zinc-200/80 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-shadow hover:shadow-[0_4px_16px_rgba(0,0,0,0.07)]"
     >
-      <div className="aspect-square w-full bg-zinc-100">
-        <FeedImageCarousel images={post.gallery} />
+      <div className="h-64 w-full bg-zinc-100 flex items-center justify-center overflow-hidden">
+  <FeedImageCarousel images={post.gallery} />
       </div>
 
       <div className="flex flex-col gap-2.5 p-4">
