@@ -6,6 +6,8 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { ChevronDown, FolderKanban, Newspaper, Download,ImageDown } from "lucide-react";
+import { cn } from "@/lib/utils";
+
 import { TreeView } from "@/features/nodes-tree/components/tree-view";
 import { InspectorPanel } from "@/features/inspector/components/inspector-panel";
 import { PreviewWorkspace } from "@/features/canvas-preview/components/preview-workspace";
@@ -31,13 +33,17 @@ export function AppShell() {
   useTreeShortcuts();
   const menuHidden = useBuilderStore((s) => s.menuHidden);
   const toggleMenuHidden = useBuilderStore((s) => s.toggleMenuHidden);
+  const editMode = useBuilderStore((s) => s.editMode);
+  
   const user = useBuilderStore((s) => s.user);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden">
-      {!menuHidden && (
 
-    <aside className="fixed z-[60] w-60 border-r bg-white/65 backdrop-blur flex flex-col shrink-0 h-screen">
+    <aside className={cn(
+          "fixed top-0 left-0 z-[60] w-60 border-r bg-white/80 backdrop-blur flex flex-col shrink-0 h-screen transition-transform duration-300 ease-in-out",
+          menuHidden ? "-translate-x-full" : "translate-x-0"
+        )}>
   {/* Action Area được chia làm 2 hàng chuẩn Flexbox */}
   <div className="flex flex-col gap-2 p-4 border-b">
     
@@ -110,22 +116,19 @@ export function AppShell() {
     <TreeView />
   </div>
 </aside>
-  
-      )}
 
       <main className="flex-1 relative">
         <PreviewWorkspace />
-        {!menuHidden && <InspectorPanel />}
+        {editMode && <InspectorPanel />}
       </main>
-
       {menuHidden && (
-        <button
-        onClick={toggleMenuHidden}
-        className="fixed top-4 left-4 z-[60] bg-black/40 text-white text-xs px-4 py-1.5 rounded-full shadow-lg hover:bg-black transition-colors"
-      >
-        Visual
-      </button>
-      )}
+            <button
+              onClick={toggleMenuHidden}
+              className="fixed top-4 left-4 z-[60] bg-black/80 text-white text-xs px-4 py-1.5 rounded-full shadow-lg hover:bg-black transition-all duration-200"
+            >
+              Visual
+            </button>
+          )}
         <ExportImageDialog open={exportImageOpen} onOpenChange={setExportImageOpen} />
     </div>
   );

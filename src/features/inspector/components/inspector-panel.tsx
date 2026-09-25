@@ -27,7 +27,7 @@ export function InspectorPanel() {
   const isInstance = def?.nodeKind === "component-instance";
 
   return (
-    <div className="fixed top-4 right-4 w-72 bg-white border rounded-lg shadow-lg p-4 flex flex-col gap-4 z-40 max-h-[80vh] overflow-y-auto">
+    <div className="fixed top-4 right-4 w-72 bg-white border rounded-lg shadow-lg p-4 flex flex-col gap-4 z-[6000] max-h-[80vh] overflow-y-auto">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">{def?.title ?? activeNode.type}</span>
         <button onClick={() => setActiveNode(null)} className="text-muted-foreground hover:text-foreground">✕</button>
