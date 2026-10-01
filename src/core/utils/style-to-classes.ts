@@ -25,6 +25,18 @@ const BORDER_WIDTH_CLASS: Record<NonNullable<StyleProps["borderWidth"]>, string>
   0: "border-0", 1: "border", 2: "border-2", 4: "border-4",
 };
 
+const WIDTH_HEIGHT_PRESET_CLASS: Record<string, string> = {
+  auto: "auto", full: "full", screen: "screen", fit: "fit",
+  "1/2": "1/2", "1/3": "1/3", "2/3": "2/3", "1/4": "1/4", "3/4": "3/4",
+};
+
+function sizeToClass(prefix: "w" | "h", value: StyleProps["width"]): string | null {
+  if (value === undefined) return null;
+  if (typeof value === "number") return `${prefix}-[${value}px]`;
+  const preset = WIDTH_HEIGHT_PRESET_CLASS[value];
+  return preset ? `${prefix}-${preset}` : null;
+}
+
 // Chỉ emit class cho field THẬT SỰ có mặt trong object — đây là chỗ quyết định hành vi
 // "override" của md/lg: field không set ở md thì không sinh class md:..., trình duyệt
 // tự áp dụng đúng theo CSS cascade thật (kế thừa từ base), Builder không tự tính toán gì.
@@ -35,6 +47,33 @@ function fieldsToClasses(fields: Partial<StyleProps>): string[] {
   if (fields.gap !== undefined) classes.push(`gap-${fields.gap}`);
   if (fields.align) classes.push(fields.align);
   if (fields.justify) classes.push(fields.justify);
+  const widthClass = sizeToClass("w", fields.width);
+  if (widthClass) classes.push(widthClass);
+  const heightClass = sizeToClass("h", fields.height);
+  if (heightClass) classes.push(heightClass);
+
+  if (fields.position) classes.push(fields.position);
+  const offsetClass = (side: "top" | "right" | "bottom" | "left", value: number | undefined) => {
+    if (value === undefined) return null;
+    return value < 0 ? `-${side}-[${Math.abs(value)}px]` : `${side}-[${value}px]`;
+  };
+  const topClass = offsetClass("top", fields.top);
+  if (topClass) classes.push(topClass);
+  const rightClass = offsetClass("right", fields.right);
+  if (rightClass) classes.push(rightClass);
+  const bottomClass = offsetClass("bottom", fields.bottom);
+  if (bottomClass) classes.push(bottomClass);
+  const leftClass = offsetClass("left", fields.left);
+  if (leftClass) classes.push(leftClass);
+  if (fields.zIndex !== undefined) classes.push(`z-${fields.zIndex}`);
+
+  if (fields.overflow) classes.push(`overflow-${fields.overflow}`);
+  if (fields.opacity !== undefined) classes.push(`opacity-${fields.opacity}`);
+  if (fields.flexWrap) classes.push(fields.flexWrap);
+  if (fields.alignSelf) classes.push(fields.alignSelf);
+  if (fields.flexGrow !== undefined) classes.push(fields.flexGrow === 1 ? "grow" : "grow-0");
+  if (fields.flexShrink !== undefined) classes.push(fields.flexShrink === 1 ? "shrink" : "shrink-0");
+
   if (fields.padding !== undefined) classes.push(`p-${fields.padding}`);
   if (fields.margin !== undefined) classes.push(`m-${fields.margin}`);
 

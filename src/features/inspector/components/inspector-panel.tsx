@@ -10,6 +10,9 @@ import { getNodeDefinition } from "@/core/registry/node-registry";
 import { BreakpointSwitcher } from "./breakpoint-switcher";
 import { LayoutSection } from "./layout-section";
 import { SpacingSection } from "./spacing-section";
+import { SizingSection } from "./sizing-section";
+import { PositionSection } from "./position-section";
+import { SelfLayoutSection } from "./self-layout-section";
 import { TypographySection } from "./typography-section";
 import { AppearanceSection } from "./appearance-section";
 import { DynamicPropsForm } from "./dynamic-props-form";
@@ -41,7 +44,10 @@ export function InspectorPanel() {
         <>
           <BreakpointSwitcher />
           {def?.canHaveChildren && <LayoutSection node={activeNode} />}
+          <SizingSection node={activeNode} />
           <SpacingSection node={activeNode} />
+          <PositionSection node={activeNode} />
+          <SelfLayoutSection node={activeNode} />
           <TypographySection node={activeNode} />
           <AppearanceSection node={activeNode} />
           <DynamicPropsForm node={activeNode} />
