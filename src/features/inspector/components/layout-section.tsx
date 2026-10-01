@@ -4,6 +4,7 @@
 "use client";
 
 import { TreeNode } from "@/core/types/builder.types";
+import { StyleProps } from "@/core/types/style.types";
 import { useStyleField } from "../hooks/use-style-field";
 import { StyleField } from "./style-field";
 
@@ -20,7 +21,7 @@ export function LayoutSection({ node }: { node: TreeNode }) {
       <StyleField label="Hướng" showClear={hasOverride("direction")} onClear={() => clearOverride("direction")}>
         <select
           value={getValue("direction") ?? "flex-col"}
-          onChange={(e) => setValue("direction", e.target.value as any)}
+          onChange={(e) => setValue("direction", e.target.value as StyleProps["direction"])}
           className="border rounded px-2 py-1"
         >
           <option value="flex-row">Ngang (flex-row)</option>
@@ -39,7 +40,7 @@ export function LayoutSection({ node }: { node: TreeNode }) {
       <StyleField label="Align" showClear={hasOverride("align")} onClear={() => clearOverride("align")}>
         <select
           value={getValue("align") ?? ""}
-          onChange={(e) => setValue("align", (e.target.value || undefined) as any)}
+          onChange={(e) => setValue("align", (e.target.value || undefined) as StyleProps["align"])}
           className="border rounded px-2 py-1"
         >
           <option value="">—</option>
@@ -50,11 +51,24 @@ export function LayoutSection({ node }: { node: TreeNode }) {
       <StyleField label="Justify" showClear={hasOverride("justify")} onClear={() => clearOverride("justify")}>
         <select
           value={getValue("justify") ?? ""}
-          onChange={(e) => setValue("justify", (e.target.value || undefined) as any)}
+          onChange={(e) => setValue("justify", (e.target.value || undefined) as StyleProps["justify"])}
           className="border rounded px-2 py-1"
         >
           <option value="">—</option>
           {JUSTIFY_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+        </select>
+      </StyleField>
+
+      <StyleField label="Flex Wrap" showClear={hasOverride("flexWrap")} onClear={() => clearOverride("flexWrap")}>
+        <select
+          value={getValue("flexWrap") ?? ""}
+          onChange={(e) => setValue("flexWrap", (e.target.value || undefined) as StyleProps["flexWrap"])}
+          className="border rounded px-2 py-1"
+        >
+          <option value="">—</option>
+          <option value="flex-nowrap">Không xuống dòng</option>
+          <option value="flex-wrap">Tự xuống dòng</option>
+          <option value="flex-wrap-reverse">Xuống dòng ngược</option>
         </select>
       </StyleField>
     </div>
