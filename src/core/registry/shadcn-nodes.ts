@@ -16,7 +16,20 @@ const rawShadcnNodes: RawDef[] = [
     { key: "variant", label: "Variant", inputType: "select", options: ["default", "destructive", "outline", "secondary", "ghost", "link"] },
     { key: "size", label: "Size", inputType: "select", options: ["default", "sm", "lg", "icon"] },
   ]},
-    { id: "shadcn.card", title: "Card", category: "Layout", tags: ["layout", "container", "panel", "card", "shadcn"], canHaveChildren: true, defaultProps: {},defaultStyle: containerDefaultStyle, propsSchema: [] },
+  {
+    id: "shadcn.card",
+    title: "Card",
+    category: "Layout",
+    tags: ["layout", "container", "panel", "card", "shadcn"],
+    canHaveChildren: true,
+    defaultProps: {},
+    defaultStyle: containerDefaultStyle,
+    propsSchema: [],
+    defaultChildren: [
+      { defId: "html.h3", props: { text: "Card Title" } },
+      { defId: "html.p", props: { text: "Mô tả ngắn cho nội dung card." } },
+    ],
+  },
   { id: "shadcn.input", title: "Input", category: "Form", tags: ["form", "input", "field", "shadcn"], canHaveChildren: false, defaultProps: { placeholder: "Nhập nội dung...", type: "text" }, propsSchema: [
     { key: "placeholder", label: "Placeholder", inputType: "text" },
     { key: "type", label: "Loại input", inputType: "select", options: ["text", "email", "password", "number"] },

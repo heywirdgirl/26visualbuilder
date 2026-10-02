@@ -50,5 +50,6 @@ export interface NodeDefinition {
   defaultProps: Record<string, unknown>;
   defaultStyle?: Partial<StyleProps>; // 👈 mới — chỉ set cho definition cần layout mặc định
   propsSchema: PropMeta[];
+  defaultChildren?: { defId: string; props?: Record<string, unknown> }[];
   icon?: string;
 }
