@@ -30,10 +30,10 @@ export function CodeModal() {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">Xem Code</Button>
+        <Button variant="outline" size="sm">Code</Button>
       </DialogTrigger>
 
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-3xl z-[7000]">
         <DialogHeader>
           <DialogTitle>
             Generated Project ({files.length} file{files.length !== 1 ? "s" : ""})

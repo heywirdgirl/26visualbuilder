@@ -1,5 +1,6 @@
 import { createClient } from "@/core/supabase/server";
 import { TreeNode } from "@/core/types/builder.types";
+import { buildGallery, GalleryImage } from "@/features/post-gallery/utils/build-gallery";
 
 export interface FeedPost {
   id: string;
@@ -7,6 +8,7 @@ export interface FeedPost {
   slug: string;
   thumbnailUrl: string | null;
   treeData: TreeNode;
+  gallery: GalleryImage[];
   authorUsername: string;
   authorName: string;
   publishedAt: string;
@@ -38,16 +40,24 @@ export async function getFeedPosts(options?: { authorId?: string }): Promise<Fee
   const postIds = posts.map((p) => p.id);
   const authorIds = Array.from(new Set(posts.map((p) => p.author_id)));
 
-  const [{ data: profiles }, { data: allLikes }, { data: userLikes }, { data: allComments }] = await Promise.all([
+  const [{ data: profiles }, { data: allLikes }, { data: userLikes }, { data: allComments }, { data: allPostPages }] = await Promise.all([
     supabase.from("profiles").select("id, username, display_name").in("id", authorIds),
     supabase.from("post_likes").select("post_id").in("post_id", postIds),
     user
       ? supabase.from("post_likes").select("post_id").eq("user_id", user.id).in("post_id", postIds)
       : Promise.resolve({ data: [] as { post_id: string }[] }),
     supabase.from("comments").select("post_id").in("post_id", postIds),
+    supabase.from("post_pages").select("post_id, page_id, image_url").in("post_id", postIds),
   ]);
 
   const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
+
+  const postPagesMap = new Map<string, { page_id: string; image_url: string }[]>();
+  (allPostPages ?? []).forEach((pp) => {
+    const arr = postPagesMap.get(pp.post_id) ?? [];
+    arr.push({ page_id: pp.page_id, image_url: pp.image_url });
+    postPagesMap.set(pp.post_id, arr);
+  });
 
   const likeCountMap = new Map<string, number>();
   (allLikes ?? []).forEach((l) => {
@@ -69,6 +79,12 @@ export async function getFeedPosts(options?: { authorId?: string }): Promise<Fee
       slug: post.slug,
       thumbnailUrl: post.thumbnail_url,
       treeData: post.tree_data as TreeNode,
+      gallery: buildGallery(
+        post.tree_data as TreeNode,
+        postPagesMap.get(post.id) ?? [],
+        post.thumbnail_url,
+        post.name
+      ),
       authorUsername: profile?.username ?? "unknown",
       authorName: profile?.display_name ?? "Ẩn danh",
       publishedAt: post.published_at,

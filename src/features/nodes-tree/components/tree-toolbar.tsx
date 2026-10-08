@@ -41,7 +41,7 @@ export function TreeToolbar() {
         onClick={toggleEditMode} title="Bật/tắt chế độ chỉnh sửa thuộc tính (Inspector)"
       >
         <Pencil className="h-3.5 w-3.5" />
-        edit mode
+        styles
       </Button>
 
       <Button
@@ -58,7 +58,11 @@ export function TreeToolbar() {
             <Plus className="h-3.5 w-3.5" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="start" className="w-72 p-0">
+        <PopoverContent 
+          side="top" 
+          align="start" 
+          sideOffset={-90}  
+          className="w-72 p-0 z-[7000]">
           {activeNodeId && (
             <QuickAddDropdown
               parentId={activeNodeId}

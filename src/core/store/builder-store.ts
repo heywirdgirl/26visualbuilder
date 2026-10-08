@@ -103,6 +103,19 @@ function findParent(node: TreeNode, childId: string): TreeNode | null {
   return null;
 }
 
+function buildChildNode(defId: string, overrideProps?: Record<string, unknown>): TreeNode | null {
+  const childDef = getNodeDefinition(defId);
+  if (!childDef) return null;
+
+  return {
+    id: crypto.randomUUID(),
+    type: defId,
+    props: { ...structuredClone(childDef.defaultProps), ...structuredClone(overrideProps ?? {}) },
+    style: { base: structuredClone(childDef.defaultStyle ?? {}) },
+    children: [],
+  };
+}
+
 // Đường đi root -> ... -> target (bao gồm target). Vì Component không thể lồng cấu trúc
 // trong Component khác (xem node-rules.ts), trên đường đi luôn có TỐI ĐA 1 Component.
 function getPathToNode(root: TreeNode, targetId: string, path: TreeNode[] = []): TreeNode[] | null {
@@ -233,12 +246,16 @@ tree: createDefaultProjectTree(),
       const parentDef = getNodeDefinition(parent.type);
       if (!parentDef || !canContain(parentDef, def.nodeKind)) return {};
 
+      const children = (def.defaultChildren ?? [])
+        .map((spec) => buildChildNode(spec.defId, spec.props))
+        .filter((node): node is TreeNode => node !== null);
+
       parent.children.push({
         id: crypto.randomUUID(),
         type: defId,
         props: structuredClone(def.defaultProps),
         style: { base: structuredClone(def.defaultStyle ?? {}) },
-        children: [],
+        children,
       });
       return { tree: newTree };
     }),

@@ -52,27 +52,36 @@ export function PostActionsBar({
   };
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        <button onClick={handleLikeClick} disabled={isToggling} className="flex items-center gap-1 hover:text-foreground">
-          <Heart className={cn("h-3.5 w-3.5", isLiked && "fill-red-500 text-red-500")} />
-          {likeCount}
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-4 text-xs text-zinc-500">
+        <button onClick={handleLikeClick} disabled={isToggling} className="flex items-center gap-1.5 transition-colors hover:text-zinc-900">
+          <Heart className={cn("h-4 w-4 transition-all", isLiked && "fill-red-500 text-red-500")} />
+          <span className="tabular-nums">{likeCount}</span>
         </button>
 
-        <button onClick={handleCommentClick} className="flex items-center gap-1 hover:text-foreground">
-          <MessageCircle className="h-3.5 w-3.5" />
-          {commentCount}
+        <button onClick={handleCommentClick} className="flex items-center gap-1.5 transition-colors hover:text-zinc-900">
+          <MessageCircle className="h-4 w-4" />
+          <span className="tabular-nums">{commentCount}</span>
         </button>
 
-        <span className="flex items-center gap-1">
-          <Copy className="h-3.5 w-3.5" />
-          {cloneCount}
+        <span className="flex items-center gap-1.5">
+          <Copy className="h-4 w-4" />
+          <span className="tabular-nums">{cloneCount}</span>
         </span>
       </div>
 
       <div className="flex items-center gap-2">
-        <CloneButton postId={postId} onCloned={() => setCloneCount((c) => c + 1)} />
-        <SharePost title={postName} canonicalUrl={canonicalUrl} stopPropagation={variant === "feed"} />
+        <CloneButton
+          postId={postId}
+          onCloned={() => setCloneCount((c) => c + 1)}
+          className="flex-1 rounded-lg bg-zinc-900 text-white hover:bg-zinc-800"
+        />
+        <SharePost
+          title={postName}
+          canonicalUrl={canonicalUrl}
+          stopPropagation={variant === "feed"}
+          iconOnly={variant === "feed"}
+        />
       </div>
     </div>
   );
