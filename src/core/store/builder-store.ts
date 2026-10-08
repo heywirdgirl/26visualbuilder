@@ -4,9 +4,11 @@ import { create } from "zustand";
 import { TreeNode } from "@/core/types/builder.types";
 import { PageCapture } from "@/core/types/page-capture.types";
 import { StyleProps, Breakpoint } from "@/core/types/style.types";
+import { AiOperation } from "@/core/types/ai-operation.types";
 import { getNodeDefinition } from "@/core/registry/node-registry";
 import { canContain } from "@/core/registry/node-rules";
 import { SYSTEM_NODE_IDS } from "@/core/registry/system-nodes";
+import { applyAiOperationsToTree, ApplyAiOperationsResult } from "@/core/utils/apply-ai-operations";
 import { useMemo } from "react";
 import type { User } from "@supabase/supabase-js";
 // ID cố định cho 2 folder gốc + trang Home mặc định — Phase 3/4/5 dùng lại để
@@ -65,6 +67,7 @@ interface BuilderState {
   toggleEditMode: () => void;
   setHighlightReferenceId: (id: string | null) => void;
   convertToComponent: (nodeId: string, name: string) => void;
+  applyAiOperations: (operations: AiOperation[]) => ApplyAiOperationsResult;
 
   draftPostTree: TreeNode | null;
   draftPostPageCaptures: PageCapture[];
@@ -348,6 +351,15 @@ tree: createDefaultProjectTree(),
       return { tree: newTree };
     }),
 
+
+  applyAiOperations: (operations) => {
+    let result!: ApplyAiOperationsResult;
+    set((state) => {
+      result = applyAiOperationsToTree(state.tree, operations);
+      return { tree: result.tree };
+    });
+    return result;
+  },
 
   convertToComponent: (nodeId, name) =>
     set((state) => {
