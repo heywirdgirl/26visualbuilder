@@ -10,6 +10,7 @@ import { useBuilderStore, useActiveNode } from "@/core/store/builder-store";
 import { getNodeDefinition } from "@/core/registry/node-registry";
 import { QuickAddDropdown } from "@/features/node-palette/components/quick-add-dropdown";
 import { AddNodeBrowser } from "@/features/node-palette/components/add-node-browser";
+import { AiAddNodePopover } from "@/features/ai-assistant/components/ai-add-node-popover";
 
 export function TreeToolbar() {
   const activeNodeId = useBuilderStore((s) => s.activeNodeId);
@@ -72,6 +73,8 @@ export function TreeToolbar() {
           )}
         </PopoverContent>
       </Popover>
+
+      <AiAddNodePopover disabled={!canAdd} />
 
       <Button
         variant="outline" size="icon" className="h-7 w-7"

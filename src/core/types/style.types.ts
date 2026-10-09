@@ -60,3 +60,12 @@ export interface NodeStyle {
   md?: Partial<StyleProps>;
   lg?: Partial<StyleProps>;
 }
+
+export const STYLE_PROP_KEYS: (keyof StyleProps)[] = [
+  "direction", "gap", "align", "justify",
+  "width", "height", "position", "top", "right", "bottom", "left", "zIndex",
+  "padding", "margin", "overflow", "opacity",
+  "flexWrap", "alignSelf", "flexGrow", "flexShrink",
+  "textColor", "bgColor", "fontSize", "fontWeight", "textAlign",
+  "borderWidth", "borderColor", "borderRadius", "shadow",
+];
