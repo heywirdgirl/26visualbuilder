@@ -10,8 +10,8 @@ import { StyleField } from "./style-field";
 import { ColorPickerField } from "./color-picker-field";
 
 const BORDER_WIDTH_OPTIONS = [0, 1, 2, 4] as const;
-const RADIUS_OPTIONS = ["none", "sm", "md", "lg", "xl", "full"] as const;
-const SHADOW_OPTIONS = ["none", "sm", "md", "lg", "xl"] as const;
+const RADIUS_OPTIONS = ["none", "sm", "md", "lg", "xl", "2xl", "3xl", "full"] as const;
+const SHADOW_OPTIONS = ["none", "sm", "md", "lg", "xl", "2xl"] as const;
 
 export function AppearanceSection({ node }: { node: TreeNode }) {
   const { getValue, setValue, hasOverride, clearOverride } = useStyleField(node);

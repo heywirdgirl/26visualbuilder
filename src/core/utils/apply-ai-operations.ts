@@ -1,7 +1,7 @@
 import { TreeNode } from "@/core/types/builder.types";
 import { AiNode, AiOperation } from "@/core/types/ai-operation.types";
 import { NodeDefinition, PropInputType } from "@/core/types/node-definition.types";
-import { StyleProps, STYLE_PROP_KEYS } from "@/core/types/style.types";
+import { NodeStyle, StyleProps, STYLE_LAYER_KEYS, STYLE_PROP_KEYS } from "@/core/types/style.types";
 import { getNodeDefinition } from "@/core/registry/node-registry";
 import { canContain } from "@/core/registry/node-rules";
 
@@ -50,16 +50,29 @@ function mergeProps(def: NodeDefinition, aiProps: Record<string, unknown> | unde
   return merged;
 }
 
-function mergeStyle(def: NodeDefinition, aiStyle: Record<string, unknown> | undefined): Partial<StyleProps> {
-  const merged: Partial<StyleProps> = structuredClone(def.defaultStyle ?? {});
-  if (!aiStyle) return merged;
-
+function sanitizeStyleFields(raw: unknown): Partial<StyleProps> {
+  if (!raw || typeof raw !== "object") return {};
+  const source = raw as Record<string, unknown>;
+  const sanitized: Record<string, unknown> = {};
   for (const key of STYLE_PROP_KEYS) {
-    if (key in aiStyle) {
-      (merged as Record<string, unknown>)[key] = aiStyle[key];
+    if (key in source) sanitized[key] = source[key];
+  }
+  return sanitized as Partial<StyleProps>;
+}
+
+function mergeStyle(def: NodeDefinition, aiStyle: Record<string, unknown> | undefined): NodeStyle {
+  const style: NodeStyle = { base: structuredClone(def.defaultStyle ?? {}) };
+  if (!aiStyle) return style;
+
+  const hasLayers = STYLE_LAYER_KEYS.some((layer) => layer in aiStyle);
+  const layers: Record<string, unknown> = hasLayers ? aiStyle : { base: aiStyle };
+  style.base = { ...style.base, ...sanitizeStyleFields(layers.base) };
+  for (const layer of STYLE_LAYER_KEYS) {
+    if (layer !== "base" && layers[layer]) {
+      style[layer] = sanitizeStyleFields(layers[layer]);
     }
   }
-  return merged;
+  return style;
 }
 
 function buildNodeRecursive(
@@ -87,7 +100,7 @@ function buildNodeRecursive(
     id: crypto.randomUUID(),
     type: aiNode.nodeType,
     props: mergeProps(nodeDef, aiNode.props),
-    style: { base: mergeStyle(nodeDef, aiNode.style) },
+    style: mergeStyle(nodeDef, aiNode.style),
     children,
   };
 }

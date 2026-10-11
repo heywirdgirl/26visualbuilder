@@ -15,6 +15,11 @@ import { PositionSection } from "./position-section";
 import { SelfLayoutSection } from "./self-layout-section";
 import { TypographySection } from "./typography-section";
 import { AppearanceSection } from "./appearance-section";
+import { GradientSection } from "./gradient-section";
+import { EffectsSection } from "./effects-section";
+import { TransformSection } from "./transform-section";
+import { TypographyExtrasSection } from "./typography-extras-section";
+import { ExtrasSection } from "./extras-section";
 import { DynamicPropsForm } from "./dynamic-props-form";
 
 export function InspectorPanel() {
@@ -42,6 +47,7 @@ export function InspectorPanel() {
         </p>
       ) : (
         <>
+          <DynamicPropsForm node={activeNode} />
           <BreakpointSwitcher />
           {def?.canHaveChildren && <LayoutSection node={activeNode} />}
           <SizingSection node={activeNode} />
@@ -50,7 +56,11 @@ export function InspectorPanel() {
           <SelfLayoutSection node={activeNode} />
           <TypographySection node={activeNode} />
           <AppearanceSection node={activeNode} />
-          <DynamicPropsForm node={activeNode} />
+          <GradientSection node={activeNode} />
+          <EffectsSection node={activeNode} />
+          <TransformSection node={activeNode} />
+          <TypographyExtrasSection node={activeNode} />
+          <ExtrasSection node={activeNode} />
         </>
       )}
     </div>
