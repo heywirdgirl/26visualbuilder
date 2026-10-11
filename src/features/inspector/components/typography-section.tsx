@@ -10,8 +10,8 @@ import { StyleField } from "./style-field";
 import { ColorPickerField } from "./color-picker-field";
 import { cn } from "@/core/utils/cn";
 
-const FONT_SIZE_OPTIONS = ["xs", "sm", "base", "lg", "xl", "2xl", "3xl", "4xl"] as const;
-const FONT_WEIGHT_OPTIONS = ["normal", "medium", "semibold", "bold"] as const;
+const FONT_SIZE_OPTIONS = ["xs", "sm", "base", "lg", "xl", "2xl", "3xl", "4xl", "5xl", "6xl", "7xl"] as const;
+const FONT_WEIGHT_OPTIONS = ["light", "normal", "medium", "semibold", "bold", "extrabold"] as const;
 const ALIGN_OPTIONS = [
   { value: "left", icon: AlignLeft },
   { value: "center", icon: AlignCenter },
@@ -28,7 +28,7 @@ export function TypographySection({ node }: { node: TreeNode }) {
       <StyleField label="Font size" showClear={hasOverride("fontSize")} onClear={() => clearOverride("fontSize")}>
         <select
           value={getValue("fontSize") ?? ""}
-          onChange={(e) => setValue("fontSize", (e.target.value || undefined) as any)}
+          onChange={(e) => setValue("fontSize", FONT_SIZE_OPTIONS.find((size) => size === e.target.value))}
           className="border rounded px-2 py-1"
         >
           <option value="">—</option>
@@ -39,7 +39,7 @@ export function TypographySection({ node }: { node: TreeNode }) {
       <StyleField label="Font weight" showClear={hasOverride("fontWeight")} onClear={() => clearOverride("fontWeight")}>
         <select
           value={getValue("fontWeight") ?? ""}
-          onChange={(e) => setValue("fontWeight", (e.target.value || undefined) as any)}
+          onChange={(e) => setValue("fontWeight", FONT_WEIGHT_OPTIONS.find((weight) => weight === e.target.value))}
           className="border rounded px-2 py-1"
         >
           <option value="">—</option>
