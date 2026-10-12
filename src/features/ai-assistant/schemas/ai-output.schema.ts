@@ -4,6 +4,7 @@ import { AiNode, AiOperation } from "@/core/types/ai-operation.types";
 const aiNodeSchema: z.ZodType<AiNode> = z.lazy(() =>
   z.object({
     nodeType: z.string(),
+    preset: z.string().optional(),
     props: z.object({}).passthrough().optional(),
     style: z.object({}).passthrough().optional(),
     children: z.array(aiNodeSchema).max(20).optional(),

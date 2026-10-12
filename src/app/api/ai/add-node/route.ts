@@ -7,6 +7,7 @@ import { buildAddNodeSystemPrompt } from "@/features/ai-assistant/prompts/add-no
 import { AiContextPayload } from "@/features/ai-assistant/utils/build-ai-context";
 
 const MODEL_ID = "@cf/zai-org/glm-4.7-flash";
+const TIMEOUT_MS = 90_000;
 
 export async function POST(request: Request) {
   try {
@@ -52,14 +53,22 @@ export async function POST(request: Request) {
     const systemPrompt = buildAddNodeSystemPrompt(getAiRegistrySummary(), context);
 
     const result = await generateObject({
-      model: workersai(MODEL_ID),
+      model: workersai(MODEL_ID, { chat_template_kwargs: { enable_thinking: false } }),
       system: systemPrompt,
       prompt,
       schema: aiResponseSchema,
+      abortSignal: AbortSignal.timeout(TIMEOUT_MS),
     });
 
+    console.log("[ai] add-node usage:", JSON.stringify(result.usage));
     return NextResponse.json({ success: true, data: result.object });
   } catch (error) {
+    if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+      return NextResponse.json(
+        { error: "AI phản hồi quá lâu — thử yêu cầu ngắn hơn (ít phần tử hơn)." },
+        { status: 504 }
+      );
+    }
     console.error("[ai] add-node thất bại:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "AI Assistant thất bại — thử lại." },
