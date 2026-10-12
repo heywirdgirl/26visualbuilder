@@ -4,6 +4,7 @@ import { NodeDefinition, PropInputType } from "@/core/types/node-definition.type
 import { NodeStyle, StyleProps, STYLE_LAYER_KEYS, STYLE_PROP_KEYS } from "@/core/types/style.types";
 import { getNodeDefinition } from "@/core/registry/node-registry";
 import { canContain } from "@/core/registry/node-rules";
+import { getStylePreset } from "@/core/registry/style-presets";
 
 export interface ApplyAiOperationsResult {
   tree: TreeNode;
@@ -60,19 +61,31 @@ function sanitizeStyleFields(raw: unknown): Partial<StyleProps> {
   return sanitized as Partial<StyleProps>;
 }
 
-function mergeStyle(def: NodeDefinition, aiStyle: Record<string, unknown> | undefined): NodeStyle {
-  const style: NodeStyle = { base: structuredClone(def.defaultStyle ?? {}) };
-  if (!aiStyle) return style;
+type StyleLayers = Partial<Record<(typeof STYLE_LAYER_KEYS)[number], Partial<StyleProps>>>;
 
+function parseAiStyle(aiStyle: Record<string, unknown> | undefined): StyleLayers {
+  if (!aiStyle) return {};
   const hasLayers = STYLE_LAYER_KEYS.some((layer) => layer in aiStyle);
-  const layers: Record<string, unknown> = hasLayers ? aiStyle : { base: aiStyle };
-  style.base = { ...style.base, ...sanitizeStyleFields(layers.base) };
+  const raw: Record<string, unknown> = hasLayers ? aiStyle : { base: aiStyle };
+  const out: StyleLayers = {};
   for (const layer of STYLE_LAYER_KEYS) {
-    if (layer !== "base" && layers[layer]) {
-      style[layer] = sanitizeStyleFields(layers[layer]);
-    }
+    if (raw[layer]) out[layer] = sanitizeStyleFields(raw[layer]);
   }
-  return style;
+  return out;
+}
+
+function mergeStyle(aiStyle: Record<string, unknown> | undefined, presetName: string | undefined): NodeStyle {
+  const presetStyle = getStylePreset(presetName)?.style;
+  const preset = presetStyle ? structuredClone(presetStyle) : undefined;
+  const ai = parseAiStyle(aiStyle);
+
+  const result: NodeStyle = { base: { ...(preset?.base ?? {}), ...(ai.base ?? {}) } };
+  for (const layer of STYLE_LAYER_KEYS) {
+    if (layer === "base") continue;
+    const merged = { ...(preset?.[layer] ?? {}), ...(ai[layer] ?? {}) };
+    if (Object.keys(merged).length > 0) result[layer] = merged;
+  }
+  return result;
 }
 
 function buildNodeRecursive(
@@ -100,7 +113,7 @@ function buildNodeRecursive(
     id: crypto.randomUUID(),
     type: aiNode.nodeType,
     props: mergeProps(nodeDef, aiNode.props),
-    style: mergeStyle(nodeDef, aiNode.style),
+    style: mergeStyle(aiNode.style, aiNode.preset),
     children,
   };
 }
