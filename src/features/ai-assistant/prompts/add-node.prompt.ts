@@ -13,7 +13,10 @@ function formatRegistryEntry(entry: RegistrySummaryEntry): string {
 }
 
 const formatPresets = () =>
-  Object.entries(STYLE_PRESETS).map(([name, preset]) => `- ${name}: ${preset.description}`).join("\n");
+  Object.entries(STYLE_PRESETS)
+    .filter(([name]) => name !== "box")
+    .map(([name, preset]) => `- ${name}: ${preset.description}`)
+    .join("\n");
 
 const formatStyleDocs = () =>
   Object.entries(STYLE_FIELD_DOCS).map(([key, doc]) => `- ${key}: ${doc}`).join("\n");

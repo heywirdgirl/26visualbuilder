@@ -73,7 +73,9 @@ src
 │   │   ├── html-nodes.ts
 │   │   ├── node-registry.ts
 │   │   ├── node-rules.ts
+│   │   ├── default-presets.ts
 │   │   ├── shadcn-nodes.ts
+│   │   ├── style-presets.ts
 │   │   ├── system-nodes.ts
 │   │   └── ui-dependencies.ts
 │   ├── store
@@ -177,6 +179,7 @@ src
 │   │   │   ├── dynamic-props-form.tsx
 │   │   │   ├── inspector-panel.tsx
 │   │   │   ├── layout-section.tsx
+│   │   │   ├── preset-section.tsx
 │   │   │   ├── position-section.tsx
 │   │   │   ├── self-layout-section.tsx
 │   │   │   ├── sizing-section.tsx
@@ -251,3 +254,12 @@ src
 │   └── utils.ts
 └── middleware.ts
 ```
+
+### Style presets
+
+Shared style presets are defined in `src/core/registry/style-presets.ts`. New nodes
+use the per-node defaults from `src/core/registry/default-presets.ts`; unmapped
+node types continue to use their registry `defaultStyle`. The Inspector's Preset
+section applies a preset to the selected node or resets it to that node type's
+default style. Applying a preset replaces the node's complete style, including
+responsive breakpoints and interaction states.
