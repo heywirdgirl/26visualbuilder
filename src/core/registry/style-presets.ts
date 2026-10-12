@@ -152,6 +152,48 @@ export const STYLE_PRESETS: Record<string, StylePreset> = {
     description: "full-width image, 16:9, cropped to fill, rounded-xl",
     style: { base: { width: "full", aspectRatio: "video", objectFit: "cover", borderRadius: "xl" } },
   },
+  box: {
+    description: "plain padded container (always visible when empty): stack gap 4, padding 4",
+    style: { base: { direction: "flex-col", gap: 4, padding: 4 } },
+  },
+  navbar: {
+    description: "top bar: row, centered, space-between, padding x 6 / y 4",
+    style: { base: { direction: "flex-row", align: "items-center", justify: "justify-between", gap: 4, paddingX: 6, paddingY: 4 } },
+  },
+  footer: {
+    description: "page footer: stacked, zinc-100 background, generous padding",
+    style: { base: { direction: "flex-col", gap: 4, paddingX: 6, paddingY: 8, bgColor: "zinc-100" } },
+  },
+  list: {
+    description: "vertical list, gap 2",
+    style: { base: { direction: "flex-col", gap: 2 } },
+  },
+  "list-item": {
+    description: "list row: horizontal, centered, gap 2",
+    style: { base: { direction: "flex-row", align: "items-center", gap: 2 } },
+  },
+  link: {
+    description: "inline link: blue-500, underline on hover",
+    style: {
+      base: { direction: "flex-row", align: "items-center", gap: 1, textColor: "blue-500", transition: "colors" },
+      hover: { textDecoration: "underline" },
+    },
+  },
+  label: {
+    description: "form label: sm, medium, zinc-700",
+    style: { base: { fontSize: "sm", fontWeight: "medium", textColor: "zinc-700" } },
+  },
+  "input-field": {
+    description: "form field: full width, thin border, rounded-lg, blue focus ring",
+    style: {
+      base: { width: "full", borderWidth: 1, borderColor: "zinc-300", borderRadius: "lg", paddingX: 3, paddingY: 2, transition: "all" },
+      focus: { ringWidth: 2, ringColor: "blue-500" },
+    },
+  },
+  "button-soft": {
+    description: "shape-only button polish (keeps the component's own variant colors): rounded-xl, lifts on hover",
+    style: { base: { borderRadius: "xl", transition: "all", duration: 200 }, hover: { translateY: -1, shadow: "md" } },
+  },
 };
 
 export function getStylePreset(name?: string): StylePreset | undefined {
