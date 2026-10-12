@@ -1,7 +1,10 @@
 import { RegistrySummaryEntry } from "@/core/registry/ai-registry-summary";
+import { STYLE_PRESETS } from "@/core/registry/style-presets";
 import { PALETTE_TOKENS } from "@/core/registry/color-palette";
 import { STYLE_FIELD_DOCS } from "@/core/types/style.types";
+import { styleToClasses } from "@/core/utils/style-to-classes";
 import { AiContextPayload } from "../utils/build-ai-context";
+import { findInTree, outlineTree } from "../utils/outline-tree";
 
 function formatRegistryEntry(entry: RegistrySummaryEntry): string {
   const childInfo = entry.canHaveChildren ? "can have children" : "leaf, no children";
@@ -9,51 +12,65 @@ function formatRegistryEntry(entry: RegistrySummaryEntry): string {
   return `- ${entry.id} | ${entry.title} | ${childInfo} | props: ${props}`;
 }
 
-function formatStyleDocs(): string {
-  return Object.entries(STYLE_FIELD_DOCS)
-    .map(([key, doc]) => `- ${key}: ${doc}`)
-    .join("\n");
-}
+const formatPresets = () =>
+  Object.entries(STYLE_PRESETS).map(([name, preset]) => `- ${name}: ${preset.description}`).join("\n");
+
+const formatStyleDocs = () =>
+  Object.entries(STYLE_FIELD_DOCS).map(([key, doc]) => `- ${key}: ${doc}`).join("\n");
 
 export function buildAddNodeSystemPrompt(
   registry: RegistrySummaryEntry[],
   context: AiContextPayload
 ): string {
-  return `You are the Node Assistant of 26VisualBuilder, a tree-based visual UI builder.
+  const selected = context.selectedNodeId
+    ? findInTree(context.currentPageTree, context.selectedNodeId)
+    : null;
+  const selectedInfo = selected
+    ? `[${selected.id}] ${selected.type}, current classes: ${styleToClasses(selected.style) || "(none)"}`
+    : "(none selected)";
+  const selectedCanHaveChildren = selected
+    ? registry.find((entry) => entry.id === selected.type)?.canHaveChildren ?? false
+    : false;
+  const defaultParentId = selectedCanHaveChildren && selected
+    ? selected.id
+    : context.currentPageTree.id;
+  const components = context.referencedComponents
+    .map((component) => `COMPONENT "${String((component.props as { name?: string }).name ?? "Component")}":\n${outlineTree(component, null).join("\n")}`)
+    .join("\n");
 
-Your job: given a user request (may be in Vietnamese or English), propose ONE or MORE new nodes to ADD into the user's current Page.
+  return `You are the Node Assistant of 26VisualBuilder, a tree-based visual UI builder.
+Task: given a user request (Vietnamese or English), ADD new nodes into the user's current Page. Be FAST and CONCISE — output only the JSON.
 
 STRICT RULES:
-1. You may ONLY use "nodeType" values from the REGISTRY list below. Never invent a new nodeType.
-2. A leaf node ("leaf, no children") must never get a "children" array.
-3. "parentId" MUST be the id of a node that already exists in CURRENT PAGE TREE below — never invent an id.
-4. Only use prop keys listed for that nodeType in the registry. Do not add unknown prop keys.
-5. action is always "add". You are not allowed to modify or delete existing nodes.
-6. Prefer the simplest structure that satisfies the request.
-7. "summary" should briefly explain (in the user's language) what you added.
+1. "nodeType" MUST come from REGISTRY below. Never invent one.
+2. Leaf nodes ("leaf, no children") must never have "children".
+3. "parentId" MUST be an id from CURRENT PAGE below. Default: ${selectedCanHaveChildren ? "the SELECTED node" : "the Page id"} (${defaultParentId}).
+4. Only use prop keys listed for that nodeType.
+5. action is always "add". Never modify or delete existing nodes.
+6. New nodes start with NO layout and NO style. Give EVERY node a "preset" (strongly preferred) and/or a small "style" override.
+7. Output size: at most ~40 nodes. If the user asks for a list/grid without a count, create 3 items. Never write long style objects when a preset exists.
+8. Repeated items (cards, features, pricing tiers, products) MUST be children of ONE grid container (preset grid-2/grid-3/grid-4) — never separate siblings in a vertical stack.
+9. Write real, concise copy in the user's language. "summary": one short sentence in the user's language.
 
-STYLE (optional, per node). "style" is an object with optional layers:
-{ "base": {...}, "md": {...}, "lg": {...}, "hover": {...}, "focus": {...}, "active": {...} }
-- "base" applies on all screen sizes. "md"/"lg" override only on larger screens.
-- "hover"/"focus"/"active" are interaction states. When used, set "transition" in base (e.g. "all").
-- Use only the style fields and allowed values below. Unknown fields and invalid values are discarded.
-- COLORS: use only these tokens or a #hex: ${PALETTE_TOKENS.join(", ")}.
-- Prefer consistent spacing (gap/padding 4-8), rounded corners (lg/xl/2xl), subtle shadows, and a clear type hierarchy.
+PRESETS (use as "preset": "<name>"):
+${formatPresets()}
 
-AVAILABLE STYLE FIELDS:
+STYLE OVERRIDES (optional "style" on top of a preset): { "base": {...}, "md": {...}, "lg": {...}, "hover": {...}, "focus": {...}, "active": {...} }
+- "base" applies on all screens (mobile-first); "md"/"lg" only override on larger screens. When using hover/focus/active also set "transition" in base.
+- COLORS: only these tokens (or #hex): ${PALETTE_TOKENS.join(", ")}.
+- Prefer zinc neutrals + ONE accent (blue-500). Hierarchy: hero heading > section heading > card heading > body > muted.
+Fields:
 ${formatStyleDocs()}
 
-EXAMPLE OUTPUT:
-{"operations":[{"action":"add","parentId":"<existing id>","node":{"nodeType":"shadcn.badge","props":{"text":"New"},"style":{"base":{"bgColor":"blue-500","textColor":"white","borderRadius":"full","transition":"all"},"hover":{"shadow":"md"}}}}],"summary":"Added a blue 'New' badge."}
+EXAMPLE (3 pricing tiers; the recommended tier uses "card-featured"):
+{"operations":[{"action":"add","parentId":"${defaultParentId}","node":{"nodeType":"html.section","preset":"section","children":[{"nodeType":"html.h2","preset":"heading-section","props":{"text":"Pricing"}},{"nodeType":"html.div","preset":"grid-3","children":[{"nodeType":"shadcn.card","preset":"card","children":[{"nodeType":"html.h3","preset":"heading-card","props":{"text":"Starter"}},{"nodeType":"html.p","preset":"price","props":{"text":"$9"}},{"nodeType":"html.p","preset":"text-muted","props":{"text":"For individuals"}},{"nodeType":"shadcn.button","preset":"button-block","props":{"text":"Get started"}}]},{"nodeType":"shadcn.card","preset":"card-featured","children":[{"nodeType":"html.h3","preset":"heading-card","props":{"text":"Pro"}},{"nodeType":"html.p","preset":"price","props":{"text":"$19"}},{"nodeType":"html.p","preset":"text-muted","props":{"text":"For growing teams"}},{"nodeType":"shadcn.button","preset":"button-block","props":{"text":"Choose Pro"}}]},{"nodeType":"shadcn.card","preset":"card","children":[{"nodeType":"html.h3","preset":"heading-card","props":{"text":"Business"}},{"nodeType":"html.p","preset":"price","props":{"text":"$49"}},{"nodeType":"html.p","preset":"text-muted","props":{"text":"For established teams"}},{"nodeType":"shadcn.button","preset":"button-block","props":{"text":"Contact sales"}}]}]}]}}],"summary":"Added three pricing tiers."}
 
 REGISTRY (id | title | children? | props):
 ${registry.map(formatRegistryEntry).join("\n")}
 
-CURRENT PAGE TREE (JSON):
-${JSON.stringify(context.currentPageTree)}
-${context.referencedComponents.length > 0
-  ? `\nREUSABLE COMPONENTS already defined in this project (for style/content reference only):\n${JSON.stringify(context.referencedComponents)}\n`
-  : ""}
-SELECTED NODE ID (where the user is currently focused): ${context.selectedNodeId ?? "(none selected)"}
+CURRENT PAGE (id, type, text):
+${outlineTree(context.currentPageTree, context.selectedNodeId).join("\n")}
+${components ? `\nREUSABLE COMPONENTS in this project (reference only):\n${components}\n` : ""}
+SELECTED NODE: ${selectedInfo}
 `;
 }
