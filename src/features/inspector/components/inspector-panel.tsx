@@ -8,6 +8,7 @@
 import { useBuilderStore, useActiveNode } from "@/core/store/builder-store";
 import { getNodeDefinition } from "@/core/registry/node-registry";
 import { BreakpointSwitcher } from "./breakpoint-switcher";
+import { PresetSection } from "./preset-section";
 import { LayoutSection } from "./layout-section";
 import { SpacingSection } from "./spacing-section";
 import { SizingSection } from "./sizing-section";
@@ -48,6 +49,7 @@ export function InspectorPanel() {
       ) : (
         <>
           <DynamicPropsForm node={activeNode} />
+          <PresetSection key={activeNode.id} node={activeNode} />
           <BreakpointSwitcher />
           {def?.canHaveChildren && <LayoutSection node={activeNode} />}
           <SizingSection node={activeNode} />

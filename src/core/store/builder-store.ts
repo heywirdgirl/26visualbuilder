@@ -6,6 +6,8 @@ import { PageCapture } from "@/core/types/page-capture.types";
 import { StyleProps, Breakpoint } from "@/core/types/style.types";
 import { AiOperation } from "@/core/types/ai-operation.types";
 import { getNodeDefinition } from "@/core/registry/node-registry";
+import { resolveDefaultStyle } from "@/core/registry/default-presets";
+import { getStylePreset } from "@/core/registry/style-presets";
 import { canContain } from "@/core/registry/node-rules";
 import { SYSTEM_NODE_IDS } from "@/core/registry/system-nodes";
 import { applyAiOperationsToTree, ApplyAiOperationsResult } from "@/core/utils/apply-ai-operations";
@@ -59,6 +61,7 @@ interface BuilderState {
   removeNode: (id: string) => void;
   updateNodeProps: (id: string, props: Partial<TreeNode["props"]>) => void;
   updateNodeStyle: (id: string, breakpoint: Breakpoint, patch: Partial<StyleProps>) => void;
+  applyStylePreset: (id: string, presetName: string | null) => void;
   moveNode: (id: string, direction: "up" | "down") => void;
   indentNode: (id: string) => void;
   outdentNode: (id: string) => void;
@@ -114,7 +117,7 @@ function buildChildNode(defId: string, overrideProps?: Record<string, unknown>):
     id: crypto.randomUUID(),
     type: defId,
     props: { ...structuredClone(childDef.defaultProps), ...structuredClone(overrideProps ?? {}) },
-    style: { base: structuredClone(childDef.defaultStyle ?? {}) },
+    style: resolveDefaultStyle(childDef),
     children: [],
   };
 }
@@ -257,7 +260,7 @@ tree: createDefaultProjectTree(),
         id: crypto.randomUUID(),
         type: defId,
         props: structuredClone(def.defaultProps),
-        style: { base: structuredClone(def.defaultStyle ?? {}) },
+        style: resolveDefaultStyle(def),
         children,
       });
       return { tree: newTree };
@@ -445,6 +448,24 @@ tree: createDefaultProjectTree(),
         node.style.base = { ...node.style.base, ...patch };
       } else {
         node.style[breakpoint] = { ...(node.style[breakpoint] ?? {}), ...patch };
+      }
+      return { tree: newTree };
+    }),
+
+  applyStylePreset: (id, presetName) =>
+    set((state) => {
+      const newTree = structuredClone(state.tree);
+      const node = findNode(newTree, id);
+      if (!node) return {};
+      const def = getNodeDefinition(node.type);
+      if (!def) return {};
+
+      if (presetName === null) {
+        node.style = resolveDefaultStyle(def);
+      } else {
+        const preset = getStylePreset(presetName);
+        if (!preset) return {};
+        node.style = structuredClone(preset.style);
       }
       return { tree: newTree };
     }),
