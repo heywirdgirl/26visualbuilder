@@ -5,7 +5,7 @@
 import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, Folder, FileText, PackagePlus } from "lucide-react";
+import { Search, Folder, FileText, PackagePlus, Box, type LucideIcon } from "lucide-react";
 import {
   useBuilderStore,
   findNode,
@@ -14,8 +14,8 @@ import {
   getReachableComponentIds,
 } from "@/core/store/builder-store";
 import { searchNodes, getNodeDefinition } from "@/core/registry/node-registry";
+import { getNodeIcon } from "../constants/node-icons";
 import { commonNodeIds } from "../constants/common-node-ids";
-import { NodeListRow } from "./node-list-row";
 
 function slugify(name: string) {
   return name
@@ -25,6 +25,28 @@ function slugify(name: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
+}
+
+function NodeTile({
+  title,
+  Icon,
+  onClick,
+}: {
+  title: string;
+  Icon: LucideIcon;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      className="flex h-14 flex-col items-center justify-center gap-1 rounded-md border bg-background px-1 hover:bg-accent active:bg-accent"
+    >
+      <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <span className="w-full truncate text-center text-[10px] leading-tight">{title}</span>
+    </button>
+  );
 }
 
 export function QuickAddDropdown({
@@ -60,9 +82,35 @@ export function QuickAddDropdown({
     [availableComponents, query]
   );
 
-  const filteredDefs = useMemo(() => {
-    if (query.trim()) return searchNodes(query).slice(0, 30);
-    return commonNodeIds.map((id) => getNodeDefinition(id)).filter((d): d is NonNullable<typeof d> => !!d);
+  const groupedDefs = useMemo(() => {
+    const q = query.trim();
+    const defs = searchNodes(q).filter(
+      (def) => def.nodeKind === "html" || def.nodeKind === "shadcn"
+    );
+    const groups = new Map<string, typeof defs>();
+    const commonIds = new Set<string>();
+
+    if (!q) {
+      const common = commonNodeIds
+        .map((id) => getNodeDefinition(id))
+        .filter(
+          (def): def is NonNullable<typeof def> =>
+            !!def && (def.nodeKind === "html" || def.nodeKind === "shadcn")
+        );
+      if (common.length) {
+        groups.set("Hay dùng", common);
+        common.forEach((def) => commonIds.add(def.id));
+      }
+    }
+
+    for (const def of defs) {
+      if (commonIds.has(def.id)) continue;
+      const category = def.category ?? "Khác";
+      if (!groups.has(category)) groups.set(category, []);
+      groups.get(category)?.push(def);
+    }
+
+    return Array.from(groups.entries());
   }, [query]);
 
   const handleAddDef = (defId: string) => {
@@ -117,7 +165,7 @@ export function QuickAddDropdown({
 
   // ── Page/Component: HTML/shadcn (như V1) + Component có sẵn (thêm Instance) ──
   return (
-    <div className="flex flex-col max-h-80">
+    <div className="flex w-full max-h-[70vh] flex-col">
       <div className="p-2 border-b">
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -128,31 +176,45 @@ export function QuickAddDropdown({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-1">
-        {filteredComponents.length === 0 && filteredDefs.length === 0 ? (
+      <div className="flex-1 space-y-3 overflow-y-auto p-2">
+        {filteredComponents.length === 0 && groupedDefs.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-4">Không tìm thấy node nào</p>
         ) : (
           <>
             {filteredComponents.length > 0 && (
-              <>
-                {!query.trim() && (
-                  <p className="text-[10px] font-medium text-muted-foreground px-2 pt-1 pb-0.5">My Components</p>
-                )}
-                {filteredComponents.map((c) => (
-                  <NodeListRow key={c.id} title={c.name} iconName="Box" onClick={() => handleAddComponentInstance(c.id)} />
-                ))}
-              </>
+              <section>
+                <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  My Components
+                </p>
+                <div className="grid grid-cols-4 gap-1">
+                  {filteredComponents.map((component) => (
+                    <NodeTile
+                      key={component.id}
+                      title={component.name}
+                      Icon={Box}
+                      onClick={() => handleAddComponentInstance(component.id)}
+                    />
+                  ))}
+                </div>
+              </section>
             )}
-            {filteredDefs.length > 0 && (
-              <>
-                {!query.trim() && filteredComponents.length > 0 && (
-                  <p className="text-[10px] font-medium text-muted-foreground px-2 pt-2 pb-0.5">Hay dùng</p>
-                )}
-                {filteredDefs.map((def) => (
-                  <NodeListRow key={def.id} title={def.title} iconName={def.icon} onClick={() => handleAddDef(def.id)} />
-                ))}
-              </>
-            )}
+            {groupedDefs.map(([category, defs]) => (
+              <section key={category}>
+                <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {category}
+                </p>
+                <div className="grid grid-cols-4 gap-1">
+                  {defs.map((def) => (
+                    <NodeTile
+                      key={def.id}
+                      title={def.title}
+                      Icon={getNodeIcon(def.id)}
+                      onClick={() => handleAddDef(def.id)}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
           </>
         )}
       </div>
