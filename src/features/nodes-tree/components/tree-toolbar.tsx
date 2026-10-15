@@ -63,7 +63,8 @@ export function TreeToolbar() {
           side="top" 
           align="start" 
           sideOffset={-90}  
-          className="w-72 p-0 z-[7000]">
+          collisionPadding={8}
+          className="w-[calc(100vw-1rem)] max-w-none p-0 z-[7000]">
           {activeNodeId && (
             <QuickAddDropdown
               parentId={activeNodeId}
