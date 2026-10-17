@@ -12,6 +12,7 @@ export type NodeCategory =
   | "Navigation"
   | "Overlay"
   | "Data Display"
+  | "Feedback"
   | "Templates"
   | "System"; // 👈 thêm — Folder/Page/Component/Component Instance. KHÔNG hiện trong Node Browser
               // duyệt theo category thường (Phase 5 xử lý riêng bằng "New Folder/Page/Component").

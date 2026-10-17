@@ -22,7 +22,7 @@ import { NodeListRow } from "./node-list-row";
 
 const CATEGORIES: NodeCategory[] = [
   "Layout", "Typography", "Form", "List", "Media",
-  "Navigation", "Overlay", "Data Display", "Templates",
+  "Navigation", "Overlay", "Data Display", "Feedback", "Templates",
 ];
 
 type Selection = { kind: "definition"; id: string } | { kind: "component"; id: string };
