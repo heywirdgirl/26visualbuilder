@@ -23,7 +23,7 @@ const classAttr = (className: string) => (className ? ` className="${escapeAttr(
 const prop = (node: TreeNode, key: string, fallback = "") =>
   String((node.props as Record<string, unknown>)[key] ?? fallback);
 
-function textEntry(jsxTagName: string, tag: string, base: string): RendererEntry {
+export function textEntry(jsxTagName: string, tag: string, base: string): RendererEntry {
   return {
     jsxTagName,
     render: (node, _children, className) =>
@@ -31,7 +31,12 @@ function textEntry(jsxTagName: string, tag: string, base: string): RendererEntry
   };
 }
 
-function boxEntry(jsxTagName: string, tag: string, base: string, importStatement?: string): RendererEntry {
+export function boxEntry(
+  jsxTagName: string,
+  tag: string,
+  base: string,
+  importStatement?: string
+): RendererEntry {
   return {
     jsxTagName,
     importStatement,
@@ -40,7 +45,7 @@ function boxEntry(jsxTagName: string, tag: string, base: string, importStatement
   };
 }
 
-function leafEntry(jsxTagName: string, tag: string, base: string): RendererEntry {
+export function leafEntry(jsxTagName: string, tag: string, base: string): RendererEntry {
   return {
     jsxTagName,
     render: (node, _children, className) =>

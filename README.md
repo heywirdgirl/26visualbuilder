@@ -83,6 +83,7 @@ src
 │   │   ├── ai-registry-summary.ts
 │   │   ├── color-palette.ts
 │   │   ├── default-presets.ts
+│   │   ├── html-extra-nodes.ts
 │   │   ├── html-nodes.ts
 │   │   ├── node-registry.ts
 │   │   ├── node-rules.ts
@@ -141,6 +142,7 @@ src
 │   │   │   └── shadow-root-wrapper.tsx
 │   │   ├── constants
 │   │   │   ├── cluster-renderers.tsx
+│   │   │   ├── html-extra-renderers.tsx
 │   │   │   └── renderer-map.tsx
 │   │   └── utils
 │   │       ├── capture-active-page.ts

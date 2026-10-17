@@ -1,6 +1,7 @@
 // core/registry/html-nodes.ts
 
 import { NodeDefinition } from "@/core/types/node-definition.types";
+import { htmlExtraRawNodes } from "./html-extra-nodes";
 
 export const containerDefaultStyle = { direction: "flex-col" as const, gap: 4, padding: 4 };
 
@@ -22,7 +23,7 @@ const rawHtmlNodes: RawDef[] = [
   { id: "html.h3", title: "Heading 3", category: "Typography", tags: ["typography", "heading", "title", "h3"], canHaveChildren: false, defaultProps: { text: "Heading 3" }, propsSchema: [{ key: "text", label: "Nội dung", inputType: "text" }] },
   { id: "html.p", title: "Paragraph", category: "Typography", tags: ["typography", "paragraph", "text"], canHaveChildren: false, defaultProps: { text: "Đoạn văn bản" }, propsSchema: [{ key: "text", label: "Nội dung", inputType: "textarea" }] },
   { id: "html.span", title: "Span", category: "Typography", tags: ["typography", "text", "inline"], canHaveChildren: false, defaultProps: { text: "Span text" }, propsSchema: [{ key: "text", label: "Nội dung", inputType: "text" }] },
-  { id: "html.label", title: "Label (HTML)", category: "Typography", tags: ["typography", "form", "label"], canHaveChildren: false, defaultProps: { text: "Label", htmlFor: "" }, propsSchema: [{ key: "text", label: "Nội dung", inputType: "text" }, { key: "htmlFor", label: "Gắn với (for)", inputType: "text" }] },
+  { id: "html.label", title: "Label (HTML)", category: "Form", tags: ["typography", "form", "label"], canHaveChildren: false, defaultProps: { text: "Label", htmlFor: "" }, propsSchema: [{ key: "text", label: "Nội dung", inputType: "text" }, { key: "htmlFor", label: "Gắn với (for)", inputType: "text" }] },
 
   // ── Form ──
   { id: "html.button", title: "Button (HTML)", category: "Form", tags: ["form", "action", "button", "click"], canHaveChildren: false, defaultProps: { text: "Button" }, propsSchema: [{ key: "text", label: "Nội dung", inputType: "text" }] },
@@ -59,7 +60,7 @@ const rawHtmlNodes: RawDef[] = [
   // ── Media ──
   { id: "html.img", title: "Image", category: "Media", tags: ["media", "image", "picture"], canHaveChildren: false, defaultProps: { src: "https://placehold.co/150", alt: "Hình ảnh" }, propsSchema: [{ key: "src", label: "Đường dẫn ảnh", inputType: "text" }, { key: "alt", label: "Alt text", inputType: "text" }] },
   { id: "html.icon", title: "Icon", category: "Media", tags: ["media", "icon", "lucide"], canHaveChildren: false, defaultProps: { name: "Star", size: 24 }, propsSchema: [{ key: "name", label: "Tên icon (lucide)", inputType: "text" }, { key: "size", label: "Kích thước", inputType: "number" }] },
-  { id: "html.separator", title: "Separator (HTML)", category: "Media", tags: ["media", "divider", "line", "separator"], canHaveChildren: false, defaultProps: { orientation: "horizontal" }, propsSchema: [{ key: "orientation", label: "Hướng", inputType: "select", options: ["horizontal", "vertical"] }] },
+  { id: "html.separator", title: "Separator (HTML)", category: "Layout", tags: ["media", "divider", "line", "separator"], canHaveChildren: false, defaultProps: { orientation: "horizontal" }, propsSchema: [{ key: "orientation", label: "Hướng", inputType: "select", options: ["horizontal", "vertical"] }] },
 
   // ── Navigation ──
   {
@@ -80,4 +81,8 @@ const rawHtmlNodes: RawDef[] = [
 ];
 
 
-export const htmlNodes: NodeDefinition[] = rawHtmlNodes.map((d) => ({ ...d, nodeKind: "html" }));
+export const htmlNodes: NodeDefinition[] = [...rawHtmlNodes, ...htmlExtraRawNodes].map((d) => ({
+  ...d,
+  tier: d.tier ?? "element",
+  nodeKind: "html",
+}));

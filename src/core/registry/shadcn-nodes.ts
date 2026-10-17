@@ -39,7 +39,7 @@ const rawShadcnNodes: RawDef[] = [
   { id: "shadcn.textarea", title: "Textarea", category: "Form", tags: ["form", "input", "multiline", "shadcn"], canHaveChildren: false, defaultProps: { placeholder: "Nhập nội dung..." }, propsSchema: [
     { key: "placeholder", label: "Placeholder", inputType: "text" },
   ]},
-  { id: "shadcn.label", title: "Label", category: "Typography", tags: ["typography", "form", "label", "shadcn"], canHaveChildren: false, defaultProps: { text: "Label", htmlFor: "" }, propsSchema: [
+  { id: "shadcn.label", title: "Label", category: "Form", tags: ["typography", "form", "label", "shadcn"], canHaveChildren: false, defaultProps: { text: "Label", htmlFor: "" }, propsSchema: [
     { key: "text", label: "Nội dung", inputType: "text" },
     { key: "htmlFor", label: "Gắn với (for)", inputType: "text" },
   ]},
@@ -66,7 +66,7 @@ const rawShadcnNodes: RawDef[] = [
     { key: "src", label: "Đường dẫn ảnh", inputType: "text" },
     { key: "fallback", label: "Chữ viết tắt (fallback)", inputType: "text" },
   ]},
-  { id: "shadcn.separator", title: "Separator", category: "Media", tags: ["media", "divider", "line", "shadcn"], canHaveChildren: false, defaultProps: { orientation: "horizontal" }, propsSchema: [
+  { id: "shadcn.separator", title: "Separator", category: "Layout", tags: ["media", "divider", "line", "shadcn"], canHaveChildren: false, defaultProps: { orientation: "horizontal" }, propsSchema: [
     { key: "orientation", label: "Hướng", inputType: "select", options: ["horizontal", "vertical"] },
   ]},
 
@@ -78,26 +78,26 @@ const rawShadcnNodes: RawDef[] = [
   ]},
 
   // ── Feedback ──
-  { id: "shadcn.alert", title: "Alert", category: "Data Display", tags: ["feedback", "alert", "message", "shadcn"], canHaveChildren: false, defaultProps: { title: "Heads up!", description: "Thông báo quan trọng.", variant: "default" }, propsSchema: [
+  { id: "shadcn.alert", title: "Alert", category: "Feedback", tags: ["feedback", "alert", "message", "shadcn"], canHaveChildren: false, defaultProps: { title: "Heads up!", description: "Thông báo quan trọng.", variant: "default" }, propsSchema: [
     { key: "title", label: "Tiêu đề", inputType: "text" },
     { key: "description", label: "Mô tả", inputType: "textarea" },
     { key: "variant", label: "Variant", inputType: "select", options: ["default", "destructive"] },
   ]},
-  { id: "shadcn.tooltip", title: "Tooltip", category: "Overlay", tags: ["feedback", "tooltip", "hint", "shadcn"], canHaveChildren: true, defaultProps: { text: "Tooltip text" },
+  { id: "shadcn.tooltip", title: "Tooltip", category: "Overlay", tier: "component", tags: ["feedback", "tooltip", "hint", "shadcn"], canHaveChildren: true, defaultProps: { text: "Tooltip text" },
     defaultChildren: [{ defId: "shadcn.button", props: { text: "Rê chuột vào đây" } }],
     propsSchema: [
     { key: "text", label: "Nội dung tooltip", inputType: "text" },
   ]},
-  { id: "shadcn.toast", title: "Toast", category: "Overlay", tags: ["feedback", "toast", "notification", "shadcn"], canHaveChildren: false, defaultProps: { title: "Thông báo", description: "" }, propsSchema: [
+  { id: "shadcn.toast", title: "Toast", category: "Feedback", tags: ["feedback", "toast", "notification", "shadcn"], canHaveChildren: false, defaultProps: { title: "Thông báo", description: "" }, propsSchema: [
     { key: "title", label: "Tiêu đề", inputType: "text" },
     { key: "description", label: "Mô tả", inputType: "text" },
   ]},
 
   // ── Data ──
-  { id: "shadcn.progress", title: "Progress", category: "Data Display", tags: ["data", "progress", "loading", "shadcn"], canHaveChildren: false, defaultProps: { value: 50 }, propsSchema: [
+  { id: "shadcn.progress", title: "Progress", category: "Feedback", tags: ["data", "progress", "loading", "shadcn"], canHaveChildren: false, defaultProps: { value: 50 }, propsSchema: [
     { key: "value", label: "Giá trị (%)", inputType: "number" },
   ]},
-  { id: "shadcn.skeleton", title: "Skeleton", category: "Data Display", tags: ["data", "skeleton", "loading", "placeholder", "shadcn"], canHaveChildren: false, defaultProps: { width: 100, height: 20 }, propsSchema: [
+  { id: "shadcn.skeleton", title: "Skeleton", category: "Feedback", tags: ["data", "skeleton", "loading", "placeholder", "shadcn"], canHaveChildren: false, defaultProps: { width: 100, height: 20 }, propsSchema: [
     { key: "width", label: "Chiều rộng (px)", inputType: "number" },
     { key: "height", label: "Chiều cao (px)", inputType: "number" },
   ]},
@@ -113,6 +113,7 @@ const rawShadcnNodes: RawDef[] = [
 
 export const shadcnNodes: NodeDefinition[] = [...rawShadcnNodes, ...clusterRawNodes].map((def) => ({
   ...def,
+  tier: def.tier ?? "element",
   nodeKind: "shadcn" as const,
   version: 1,
 }));
