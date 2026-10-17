@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { TreeNode } from "@/core/types/builder.types";
 import { PageCapture } from "@/core/types/page-capture.types";
 import { StyleProps, Breakpoint } from "@/core/types/style.types";
+import { DefaultChildSpec } from "@/core/types/node-definition.types";
 import { AiOperation } from "@/core/types/ai-operation.types";
 import { getNodeDefinition } from "@/core/registry/node-registry";
 import { resolveDefaultStyle } from "@/core/registry/default-presets";
@@ -11,6 +12,7 @@ import { getStylePreset } from "@/core/registry/style-presets";
 import { canContain } from "@/core/registry/node-rules";
 import { SYSTEM_NODE_IDS } from "@/core/registry/system-nodes";
 import { applyAiOperationsToTree, ApplyAiOperationsResult } from "@/core/utils/apply-ai-operations";
+import { normalizeClusterValues } from "@/core/utils/normalize-cluster-values";
 import { useMemo } from "react";
 import type { User } from "@supabase/supabase-js";
 // ID cố định cho 2 folder gốc + trang Home mặc định — Phase 3/4/5 dùng lại để
@@ -109,17 +111,31 @@ function findParent(node: TreeNode, childId: string): TreeNode | null {
   return null;
 }
 
-function buildChildNode(defId: string, overrideProps?: Record<string, unknown>): TreeNode | null {
-  const childDef = getNodeDefinition(defId);
-  if (!childDef) return null;
+const MAX_DEPTH = 8;
 
+function buildNodeFromSpec(
+  defId: string,
+  overrideProps?: Record<string, unknown>,
+  childSpecs?: DefaultChildSpec[],
+  depth = 0
+): TreeNode | null {
+  if (depth > MAX_DEPTH) return null;
+  const def = getNodeDefinition(defId);
+  if (!def) return null;
+  const specs = childSpecs ?? def.defaultChildren ?? [];
   return {
     id: crypto.randomUUID(),
     type: defId,
-    props: { ...structuredClone(childDef.defaultProps), ...structuredClone(overrideProps ?? {}) },
-    style: resolveDefaultStyle(childDef),
-    children: [],
+    props: { ...structuredClone(def.defaultProps), ...structuredClone(overrideProps ?? {}) },
+    style: resolveDefaultStyle(def),
+    children: specs
+      .map((spec) => buildNodeFromSpec(spec.defId, spec.props, spec.children, depth + 1))
+      .filter((node): node is TreeNode => node !== null),
   };
+}
+
+export function buildNodeTree(spec: DefaultChildSpec): TreeNode | null {
+  return buildNodeFromSpec(spec.defId, spec.props, spec.children);
 }
 
 // Đường đi root -> ... -> target (bao gồm target). Vì Component không thể lồng cấu trúc
@@ -250,19 +266,11 @@ tree: createDefaultProjectTree(),
       if (!parent) return {};
 
       const parentDef = getNodeDefinition(parent.type);
-      if (!parentDef || !canContain(parentDef, def.nodeKind)) return {};
+      if (!parentDef || !canContain(parentDef, def.nodeKind, def)) return {};
 
-      const children = (def.defaultChildren ?? [])
-        .map((spec) => buildChildNode(spec.defId, spec.props))
-        .filter((node): node is TreeNode => node !== null);
-
-      parent.children.push({
-        id: crypto.randomUUID(),
-        type: defId,
-        props: structuredClone(def.defaultProps),
-        style: resolveDefaultStyle(def),
-        children,
-      });
+      const newNode = buildNodeFromSpec(defId);
+      if (!newNode) return {};
+      parent.children.push(newNode);
       return { tree: newTree };
     }),
 
@@ -510,7 +518,7 @@ tree: createDefaultProjectTree(),
       const prevSibling = parent.children[index - 1];
       const movingDef = getNodeDefinition(movingNode.type);
       const prevDef = getNodeDefinition(prevSibling.type);
-      if (!movingDef || !prevDef || !canContain(prevDef, movingDef.nodeKind)) return {};
+      if (!movingDef || !prevDef || !canContain(prevDef, movingDef.nodeKind, movingDef)) return {};
 
       const [node] = parent.children.splice(index, 1);
       prevSibling.children.push(node);
@@ -529,7 +537,7 @@ tree: createDefaultProjectTree(),
       const movingNode = parent.children.find((c) => c.id === id);
       const grandparentDef = getNodeDefinition(grandparent.type);
       const movingDef = movingNode ? getNodeDefinition(movingNode.type) : undefined;
-      if (!movingNode || !movingDef || !grandparentDef || !canContain(grandparentDef, movingDef.nodeKind))
+      if (!movingNode || !movingDef || !grandparentDef || !canContain(grandparentDef, movingDef.nodeKind, movingDef))
         return {};
 
       const parentIndex = grandparent.children.findIndex((c) => c.id === parent.id);
@@ -576,6 +584,12 @@ setUser: (user) => set({ user }),
 
   
 }));
+
+useBuilderStore.subscribe((state, prev) => {
+  if (state.tree === prev.tree) return;
+  const fixed = normalizeClusterValues(state.tree);
+  if (fixed) useBuilderStore.setState({ tree: fixed });
+});
   
 export function useActiveNode() {
   return useBuilderStore((s) => (s.activeNodeId ? findNode(s.tree, s.activeNodeId) : null));

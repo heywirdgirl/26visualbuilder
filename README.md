@@ -16,6 +16,9 @@ src
 │   │   ├── layout.tsx
 │   │   └── page.tsx
 │   ├── api
+│   │   ├── ai
+│   │   │   └── add-node
+│   │   │       └── route.ts
 │   │   └── upload-thumbnail
 │   │       └── route.ts
 │   ├── auth
@@ -32,10 +35,12 @@ src
 │   ├── favicon.ico
 │   ├── globals.css
 │   ├── layout.tsx
+│   ├── preview.css
 │   ├── robots.ts
 │   └── sitemap.ts
 ├── components
 │   └── ui
+│       ├── accordion.tsx
 │       ├── alert-dialog.tsx
 │       ├── alert.tsx
 │       ├── avatar.tsx
@@ -44,8 +49,11 @@ src
 │       ├── button.tsx
 │       ├── card.tsx
 │       ├── checkbox.tsx
+│       ├── collapsible.tsx
+│       ├── context-menu.tsx
 │       ├── dialog.tsx
 │       ├── dropdown-menu.tsx
+│       ├── hover-card.tsx
 │       ├── input.tsx
 │       ├── label.tsx
 │       ├── menubar.tsx
@@ -54,9 +62,11 @@ src
 │       ├── popover.tsx
 │       ├── progress.tsx
 │       ├── radio-group.tsx
+│       ├── resizable.tsx
 │       ├── scroll-area.tsx
 │       ├── select.tsx
 │       ├── separator.tsx
+│       ├── sheet.tsx
 │       ├── skeleton.tsx
 │       ├── sonner.tsx
 │       ├── switch.tsx
@@ -70,10 +80,13 @@ src
 │   ├── r2
 │   │   └── env.ts
 │   ├── registry
+│   │   ├── ai-registry-summary.ts
+│   │   ├── color-palette.ts
+│   │   ├── default-presets.ts
 │   │   ├── html-nodes.ts
 │   │   ├── node-registry.ts
 │   │   ├── node-rules.ts
-│   │   ├── default-presets.ts
+│   │   ├── shadcn-cluster-nodes.ts
 │   │   ├── shadcn-nodes.ts
 │   │   ├── style-presets.ts
 │   │   ├── system-nodes.ts
@@ -85,18 +98,33 @@ src
 │   │   ├── proxy.ts
 │   │   └── server.ts
 │   ├── types
+│   │   ├── ai-operation.types.ts
 │   │   ├── builder.types.ts
 │   │   ├── generated-file.types.ts
 │   │   ├── node-definition.types.ts
 │   │   ├── page-capture.types.ts
 │   │   └── style.types.ts
 │   └── utils
+│       ├── apply-ai-operations.ts
 │       ├── cn.ts
 │       ├── escape-jsx-text.ts
+│       ├── normalize-cluster-values.ts
 │       ├── site-url.ts
 │       ├── style-cascade.ts
 │       └── style-to-classes.ts
 ├── features
+│   ├── ai-assistant
+│   │   ├── components
+│   │   │   └── ai-add-node-popover.tsx
+│   │   ├── hooks
+│   │   │   └── use-ai-add-node.ts
+│   │   ├── prompts
+│   │   │   └── add-node.prompt.ts
+│   │   ├── schemas
+│   │   │   └── ai-output.schema.ts
+│   │   └── utils
+│   │       ├── build-ai-context.ts
+│   │       └── outline-tree.ts
 │   ├── app-shell
 │   │   └── components
 │   │       └── app-shell.tsx
@@ -112,6 +140,7 @@ src
 │   │   │   ├── preview-workspace.tsx
 │   │   │   └── shadow-root-wrapper.tsx
 │   │   ├── constants
+│   │   │   ├── cluster-renderers.tsx
 │   │   │   └── renderer-map.tsx
 │   │   └── utils
 │   │       ├── capture-active-page.ts
@@ -177,14 +206,21 @@ src
 │   │   │   ├── breakpoint-switcher.tsx
 │   │   │   ├── color-picker-field.tsx
 │   │   │   ├── dynamic-props-form.tsx
+│   │   │   ├── effects-section.tsx
+│   │   │   ├── extras-section.tsx
+│   │   │   ├── gradient-section.tsx
 │   │   │   ├── inspector-panel.tsx
 │   │   │   ├── layout-section.tsx
-│   │   │   ├── preset-section.tsx
 │   │   │   ├── position-section.tsx
+│   │   │   ├── preset-section.tsx
+│   │   │   ├── section-shell.tsx
 │   │   │   ├── self-layout-section.tsx
 │   │   │   ├── sizing-section.tsx
 │   │   │   ├── spacing-section.tsx
+│   │   │   ├── style-controls.tsx
 │   │   │   ├── style-field.tsx
+│   │   │   ├── transform-section.tsx
+│   │   │   ├── typography-extras-section.tsx
 │   │   │   └── typography-section.tsx
 │   │   └── hooks
 │   │       └── use-style-field.ts
@@ -202,7 +238,8 @@ src
 │   │   │   ├── node-list-row.tsx
 │   │   │   └── quick-add-dropdown.tsx
 │   │   └── constants
-│   │       └── common-node-ids.ts
+│   │       ├── common-node-ids.ts
+│   │       └── node-icons.ts
 │   ├── node-tree-preview
 │   │   └── components
 │   │       ├── readonly-node-row.tsx

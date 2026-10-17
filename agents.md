@@ -1,255 +1,115 @@
-Mình chỉ đưa phần cần sửa trong `quick-add-dropdown.tsx`. Để dropdown thật sự rộng hết màn hình, mình cần xem thêm 2 file ở cuối.
+# v6.4: Nội dung mẫu cho node HTML và dọn mã chết
 
-## 1. Import (thay dòng import `commonNodeIds`)
+Hầu hết node shadcn đã có nội dung mẫu từ v6.2 và v6.3. Bản này làm nốt phần còn lại: `ul`, `ol`, `li`, `nav`, `a`, `Card`, `Scroll Area`, `Tooltip`, rồi xóa các đoạn cũ đã bị ghi đè.
 
-```tsx
-import { searchNodes, getNodeDefinition, getAllNodeDefinitions } from "@/core/registry/node-registry";
-import { commonNodeIds } from "../constants/common-node-ids";
-```
+## 1. `html-nodes.ts`: thay 5 dòng
 
-> `getAllNodeDefinitions` là tên mình giả định, bạn đổi theo export thật trong `node-registry.ts` (xem phần cuối).
-
-## 2. Thay `filteredDefs` bằng `groupedDefs`
-
-```tsx
-const groupedDefs = useMemo(() => {
-  const q = query.trim();
-  const defs = (q ? searchNodes(q) : getAllNodeDefinitions()).filter(
-    (d) => d.nodeKind === "html" || d.nodeKind === "shadcn"
-  );
-
-  const groups = new Map<string, typeof defs>();
-
-  // Khi chưa search: nhóm "Hay dùng" lên đầu
-  if (!q) {
-    const common = commonNodeIds
-      .map((id) => getNodeDefinition(id))
-      .filter((d): d is NonNullable<typeof d> => !!d);
-    if (common.length) groups.set("Hay dùng", common);
-  }
-
-  for (const d of defs) {
-    const key = d.category ?? "Khác";
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(d);
-  }
-  return Array.from(groups.entries());
-}, [query]);
-```
-
-## 3. Thay phần `return` cuối (Page/Component mode)
-
-```tsx
-return (
-  <div className="flex flex-col w-full max-h-[70vh]">
-    <div className="p-2 border-b">
-      <div className="relative">
-        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-        <Input
-          autoFocus value={query} onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search node..." className="pl-7 h-8 text-sm"
-        />
-      </div>
-    </div>
-
-    <div className="flex-1 overflow-y-auto p-2 space-y-3">
-      {filteredComponents.length === 0 && groupedDefs.length === 0 ? (
-        <p className="text-xs text-muted-foreground text-center py-4">Không tìm thấy node nào</p>
-      ) : (
-        <>
-          {filteredComponents.length > 0 && (
-            <section>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground px-1 pb-1">
-                My Components
-              </p>
-              <div className="grid grid-cols-4 gap-1">
-                {filteredComponents.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    title={c.name}
-                    onClick={() => handleAddComponentInstance(c.id)}
-                    className="h-8 px-1.5 rounded-md border bg-background text-xs truncate hover:bg-accent active:bg-accent"
-                  >
-                    {c.name}
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {groupedDefs.map(([category, defs]) => (
-            <section key={category}>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground px-1 pb-1">
-                {category}
-              </p>
-              <div className="grid grid-cols-4 gap-1">
-                {defs.map((def) => (
-                  <button
-                    key={`${category}-${def.id}`}
-                    type="button"
-                    title={def.title}
-                    onClick={() => handleAddDef(def.id)}
-                    className="h-8 px-1.5 rounded-md border bg-background text-xs truncate hover:bg-accent active:bg-accent"
-                  >
-                    {def.title}
-                  </button>
-                ))}
-              </div>
-            </section>
-          ))}
-        </>
-      )}
-    </div>
-
-    <div className="p-2 border-t">
-      <Button variant="ghost" size="sm" className="w-full text-xs" onClick={onOpenBrowser}>
-        Duyệt tất cả theo danh mục...
-      </Button>
-    </div>
-  </div>
-);
-```
-
-Lưu ý: `NodeListRow` không còn dùng ở đây (nên xóa import nếu không dùng chỗ khác). Hiện mỗi ô chỉ có chữ, chưa có icon vì ô nhỏ. Nếu muốn icon, mình thêm sau.
-
-## 4. Cần gửi thêm cho mình
-
-1. **File chứa `<PopoverContent>` / `<DropdownMenuContent>` bọc `QuickAddDropdown`**. Có thể là `tree-toolbar.tsx` hoặc `tree-node-item.tsx`. Chiều ngang hiện tại do file này quyết định, nên phải sửa ở đó (thường là `className="w-[calc(100vw-1rem)] max-w-none p-0"` kèm `collisionPadding`). Trong ảnh dropdown đang bị tràn lệch phải.
-2. **`core/registry/node-registry.ts`** để mình xác nhận tên hàm lấy toàn bộ node (thay `getAllNodeDefinitions`) và chắc `category` / `nodeKind` đúng.
-
-**Thêm icon không phức tạp, và `lucide-react` (bạn đã dùng sẵn) đủ cho toàn bộ node này.** Nó có hơn 1500 icon, nên các node như Div, Heading, Button, Table, Dialog, Tabs, Accordion đều có icon phù hợp. Không cần bộ icon nào khác.
-
-Cách đơn giản nhất là tạo một file map `id → icon`, không đụng vào registry. Import trực tiếp từng icon để bundle không phình to (đừng dùng `icons[name]` động vì nó kéo cả bộ lucide vào bundle).
-
-## 1. Tạo file mới `features/node-palette/constants/node-icons.ts`
+Thay các dòng `html.ul`, `html.ol`, `html.li`, `html.a`, `html.nav` bằng:
 
 ```ts
-import {
-  Box, LayoutTemplate, PanelTop, PanelBottom, PanelLeft, Newspaper,
-  Heading1, Heading2, Heading3, Pilcrow, Type, Tag,
-  MousePointerClick, TextCursorInput, AlignLeft, ChevronsUpDown,
-  SquareCheck, CircleDot, ToggleLeft, List, ListOrdered, Dot,
-  Image, Star, SeparatorHorizontal, Menu, Link as LinkIcon,
-  Square, BadgeCheck, CircleUser, ScrollText, LayoutPanelTop,
-  ChevronsDownUp, UnfoldVertical, Columns2, TriangleAlert, ShieldAlert,
-  AppWindow, PanelRight, MessageSquare, Info, Bell, Table, Loader,
-  Hourglass, ChevronsRight, Ellipsis, AlignJustify, ChevronDown,
-  MousePointer2, Eye, type LucideIcon,
-} from "lucide-react";
-
-const NODE_ICONS: Record<string, LucideIcon> = {
-  // HTML
-  "html.div": Box, "html.section": LayoutTemplate, "html.main": LayoutTemplate,
-  "html.header": PanelTop, "html.footer": PanelBottom, "html.aside": PanelLeft,
-  "html.article": Newspaper,
-  "html.h1": Heading1, "html.h2": Heading2, "html.h3": Heading3,
-  "html.p": Pilcrow, "html.span": Type, "html.label": Tag,
-  "html.button": MousePointerClick, "html.input": TextCursorInput,
-  "html.textarea": AlignLeft, "html.select": ChevronsUpDown,
-  "html.checkbox": SquareCheck, "html.radio": CircleDot, "html.switch": ToggleLeft,
-  "html.ul": List, "html.ol": ListOrdered, "html.li": Dot,
-  "html.img": Image, "html.icon": Star, "html.separator": SeparatorHorizontal,
-  "html.nav": Menu, "html.a": LinkIcon,
-
-  // shadcn
-  "shadcn.button": MousePointerClick, "shadcn.card": Square,
-  "shadcn.input": TextCursorInput, "shadcn.textarea": AlignLeft,
-  "shadcn.label": Tag, "shadcn.checkbox": SquareCheck,
-  "shadcn.radio-group": CircleDot, "shadcn.switch": ToggleLeft,
-  "shadcn.select": ChevronsUpDown, "shadcn.badge": BadgeCheck,
-  "shadcn.avatar": CircleUser, "shadcn.separator": SeparatorHorizontal,
-  "shadcn.scroll-area": ScrollText, "shadcn.tabs": LayoutPanelTop,
-  "shadcn.accordion": ChevronsDownUp, "shadcn.collapsible": UnfoldVertical,
-  "shadcn.resizable": Columns2, "shadcn.alert": TriangleAlert,
-  "shadcn.alert-dialog": ShieldAlert, "shadcn.dialog": AppWindow,
-  "shadcn.sheet": PanelRight, "shadcn.popover": MessageSquare,
-  "shadcn.tooltip": Info, "shadcn.toast": Bell, "shadcn.table": Table,
-  "shadcn.progress": Loader, "shadcn.skeleton": Hourglass,
-  "shadcn.breadcrumb": ChevronsRight, "shadcn.pagination": Ellipsis,
-  "shadcn.navigation-menu": Menu, "shadcn.menubar": AlignJustify,
-  "shadcn.dropdown-menu": ChevronDown, "shadcn.context-menu": MousePointer2,
-  "shadcn.hover-card": Eye,
-};
-
-export function getNodeIcon(id: string): LucideIcon {
-  return NODE_ICONS[id] ?? Box; // node mới chưa có trong map vẫn hiện Box, không lỗi
-}
+  // ── List ──
+  { id: "html.ul", title: "Unordered List", category: "List", tags: ["list", "unordered", "container"], canHaveChildren: true, defaultProps: {}, defaultStyle: { direction: "flex-col", gap: 1 }, propsSchema: [],
+    defaultChildren: [1, 2, 3].map((n) => ({ defId: "html.li", children: [{ defId: "html.span", props: { text: `Mục ${n}` } }] })) },
+  { id: "html.ol", title: "Ordered List", category: "List", tags: ["list", "ordered", "container"], canHaveChildren: true, defaultProps: {}, defaultStyle: { direction: "flex-col", gap: 1 }, propsSchema: [],
+    defaultChildren: [1, 2, 3].map((n) => ({ defId: "html.li", children: [{ defId: "html.span", props: { text: `Bước ${n}` } }] })) },
+  { id: "html.li", title: "List Item", category: "List", tags: ["list", "item", "container"], canHaveChildren: true, defaultProps: {}, defaultStyle: { direction: "flex-row", gap: 2 }, propsSchema: [],
+    defaultChildren: [{ defId: "html.span", props: { text: "Mục danh sách" } }] },
 ```
 
-Nếu build báo thiếu `SquareCheck`, đổi thành `CheckSquare` (tùy phiên bản lucide).
+```ts
+  // ── Navigation ──
+  { id: "html.nav", title: "Nav", category: "Navigation", tags: ["navigation", "menu", "container"], canHaveChildren: true, defaultProps: {}, defaultStyle: { direction: "flex-row", gap: 4 }, propsSchema: [],
+    defaultChildren: ["Trang chủ", "Giới thiệu", "Liên hệ"].map((t) => ({
+      defId: "html.a", props: { href: "#" }, children: [{ defId: "html.span", props: { text: t } }],
+    })) },
+  { id: "html.a", title: "Link", category: "Navigation", tags: ["navigation", "link", "anchor"], canHaveChildren: true, defaultProps: { href: "#" }, defaultStyle: { direction: "flex-row", gap: 1 }, propsSchema: [{ key: "href", label: "Đường dẫn (href)", inputType: "text" }],
+    defaultChildren: [{ defId: "html.span", props: { text: "Liên kết" } }] },
+```
 
-## 2. `quick-add-dropdown.tsx`
+Trước đây `html.a` thêm vào là một thẻ trống, nhìn không thấy gì trên canvas. Giờ nó có chữ. Mình **không** thêm `parentOnly` hay `allowedChildIds` cho `ul/ol/li`. Một phần vì như vậy hợp lệ hơn về HTML, nhưng chủ yếu vì mình chưa thấy `apply-ai-operations.ts`: nếu AI đang sinh cây có `li` ngoài `ul`, luật chặt sẽ làm các thao tác đó bị từ chối. Cần chặt thì mình thêm sau khi xem file đó.
 
-**Import:** bỏ `getAllNodeDefinitions`. `searchNodes("")` đã trả về toàn bộ node.
+## 2. `shadcn-nodes.ts`
+
+**Card**: thay khối `shadcn.card` hiện có:
+
+```ts
+  {
+    id: "shadcn.card", title: "Card", category: "Layout", tier: "component",
+    tags: ["layout", "container", "panel", "card", "shadcn"],
+    canHaveChildren: true, defaultProps: {}, defaultStyle: containerDefaultStyle, propsSchema: [],
+    defaultChildren: [
+      { defId: "html.h3", props: { text: "Card Title" } },
+      { defId: "html.p", props: { text: "Mô tả ngắn cho nội dung card." } },
+      { defId: "shadcn.button", props: { text: "Xem thêm" } },
+    ],
+  },
+```
+
+**Scroll Area** và **Tooltip**: thêm `defaultChildren` vào hai dòng hiện có (dán ngay trước `propsSchema`):
+
+```ts
+// shadcn.scroll-area
+defaultChildren: [1, 2, 3, 4, 5, 6].map((n) => ({ defId: "html.p", props: { text: `Dòng nội dung ${n}` } })),
+
+// shadcn.tooltip
+defaultChildren: [{ defId: "shadcn.button", props: { text: "Rê chuột vào đây" } }],
+```
+
+Ví dụ, dòng Tooltip sẽ thành:
+
+```ts
+{ id: "shadcn.tooltip", title: "Tooltip", category: "Overlay", tags: ["feedback", "tooltip", "hint", "shadcn"], canHaveChildren: true, defaultProps: { text: "Tooltip text" },
+  defaultChildren: [{ defId: "shadcn.button", props: { text: "Rê chuột vào đây" } }],
+  propsSchema: [{ key: "text", label: "Nội dung tooltip", inputType: "text" }] },
+```
+
+## 3. Dọn mã chết trong `shadcn-nodes.ts`
+
+**Xóa** khỏi mảng `rawShadcnNodes` các định nghĩa cũ mà `shadcn-cluster-nodes.ts` đã thay thế:
+
+`shadcn.alert-dialog`, `shadcn.dialog`, `shadcn.sheet`, `shadcn.popover`, `shadcn.table`, `shadcn.breadcrumb`, `shadcn.navigation-menu`, `shadcn.menubar`, `shadcn.dropdown-menu`, `shadcn.context-menu`, `shadcn.hover-card`, `shadcn.collapsible`, `shadcn.resizable`.
+
+(`shadcn.tabs` và `shadcn.accordion` đã thay tại chỗ ở v6.2, nên không còn bản cũ.)
+
+Rồi thay phần cuối file bằng bản gọn, không cần bộ lọc `clusterIds` nữa:
+
+```ts
+import { clusterRawNodes } from "./shadcn-cluster-nodes";
+
+export const shadcnNodes: NodeDefinition[] = [...rawShadcnNodes, ...clusterRawNodes].map((d) => ({
+  ...d,
+  nodeKind: "shadcn" as const,
+  version: 1,
+}));
+```
+
+## 4. Dọn mã chết trong `renderer-map.tsx`
+
+**Xóa các entry cũ** (đã bị `...clusterRenderers` ghi đè):
+
+`shadcn.collapsible`, `shadcn.resizable`, `shadcn.alert-dialog`, `shadcn.dialog`, `shadcn.sheet`, `shadcn.popover`, `shadcn.table`, `shadcn.breadcrumb`, `shadcn.navigation-menu`, `shadcn.menubar`, `shadcn.dropdown-menu`, `shadcn.context-menu`, `shadcn.hover-card`.
+
+Sau đó **không còn ai dùng `placeholderEntry`**, nên xóa luôn hàm này. Kèm các import không còn dùng:
 
 ```tsx
-import { searchNodes, getNodeDefinition } from "@/core/registry/node-registry";
-import { getNodeIcon } from "../constants/node-icons";
-import { Box, type LucideIcon } from "lucide-react"; // gộp vào import lucide hiện có
+// XÓA các dòng import này
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { Breadcrumb, BreadcrumbList } from "@/components/ui/breadcrumb";
+import { NavigationMenu, NavigationMenuList } from "@/components/ui/navigation-menu";
+import { Menubar } from "@/components/ui/menubar";
 ```
 
-**Trong `groupedDefs`:** sửa một dòng.
+`shadcn.tooltip` và `shadcn.toast` giữ nguyên vì không có bản mới.
 
-```tsx
-const defs = searchNodes(q).filter(
-  (d) => d.nodeKind === "html" || d.nodeKind === "shadcn"
-);
-```
+## 5. Dọn `ui-dependencies.ts`
 
-**Thêm component ô node** (đặt ngoài `QuickAddDropdown`, ví dụ ngay dưới `slugify`). Icon nằm trên chữ vì 4 cột trên điện thoại rất hẹp:
+Xóa 4 dòng cũ đã có trong khối `add(...)`: `"shadcn.table"`, `"shadcn.breadcrumb"`, `"shadcn.navigation-menu"`, `"shadcn.menubar"`. Xóa luôn đoạn comment cuối về "13 entry còn lại" vì không còn đúng.
 
-```tsx
-function NodeTile({
-  title, Icon, onClick,
-}: { title: string; Icon: LucideIcon; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      title={title}
-      onClick={onClick}
-      className="flex flex-col items-center justify-center gap-1 h-14 px-1 rounded-md border bg-background hover:bg-accent active:bg-accent"
-    >
-      <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-      <span className="w-full text-center text-[10px] leading-tight truncate">{title}</span>
-    </button>
-  );
-}
-```
+## Kiểm tra sau v6.4
 
-**Thay các `<button>` trong lưới:**
+1. Thêm **Unordered List**: ra 3 mục có chữ. Thêm **Nav**: ra 3 link thấy được.
+2. Thêm **Card**: có tiêu đề, mô tả và nút.
+3. Thêm **Scroll Area**: 6 dòng, cuộn được.
+4. Build không báo lỗi `unused import` hay `placeholderEntry is not defined`. Nếu báo, bạn còn sót một entry cũ gọi `placeholderEntry`.
+5. Mọi cụm của v6.2 và v6.3 (Tabs, Dialog, Table, Breadcrumb...) vẫn chạy như trước.
 
-```tsx
-{filteredComponents.map((c) => (
-  <NodeTile key={c.id} title={c.name} Icon={Box} onClick={() => handleAddComponentInstance(c.id)} />
-))}
-```
-
-```tsx
-{defs.map((def) => (
-  <NodeTile
-    key={`${category}-${def.id}`}
-    title={def.title}
-    Icon={getNodeIcon(def.id)}
-    onClick={() => handleAddDef(def.id)}
-  />
-))}
-```
-
-## 3. `tree-toolbar.tsx`: nới rộng hết chiều ngang
-
-Thay `<PopoverContent ...>`:
-
-```tsx
-<PopoverContent
-  side="top"
-  align="start"
-  sideOffset={-90}
-  collisionPadding={8}
-  className="w-[calc(100vw-1rem)] max-w-none p-0 z-[7000]"
->
-```
-
-`collisionPadding` giúp Radix tự đẩy popover vào trong màn hình, nên sẽ hết bị tràn lệch phải như trong ảnh. Trên desktop popover cũng sẽ rộng gần hết màn hình. Nếu không muốn vậy, dùng `w-[calc(100vw-1rem)] sm:w-[480px]`.
-
-Nếu sau khi sửa `sideOffset={-90}` làm popover đè lên thanh toolbar không như ý, gửi mình ảnh mới để chỉnh lại vị trí.
