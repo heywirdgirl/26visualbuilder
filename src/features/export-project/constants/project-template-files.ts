@@ -18,11 +18,13 @@ const PACKAGE_JSON = (projectSlug: string) => `{
     "next": "16.2.9",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "cn": "^0.2.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.21.0",
     "radix-ui": "^1.6.0",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "react-resizable-panels": "^4.14.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

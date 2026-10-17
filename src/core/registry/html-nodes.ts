@@ -1,6 +1,7 @@
 // core/registry/html-nodes.ts
 
 import { NodeDefinition } from "@/core/types/node-definition.types";
+import { htmlExtraRawNodes } from "./html-extra-nodes";
 
 export const containerDefaultStyle = { direction: "flex-col" as const, gap: 4, padding: 4 };
 
@@ -22,7 +23,7 @@ const rawHtmlNodes: RawDef[] = [
   { id: "html.h3", title: "Heading 3", category: "Typography", tags: ["typography", "heading", "title", "h3"], canHaveChildren: false, defaultProps: { text: "Heading 3" }, propsSchema: [{ key: "text", label: "Nội dung", inputType: "text" }] },
   { id: "html.p", title: "Paragraph", category: "Typography", tags: ["typography", "paragraph", "text"], canHaveChildren: false, defaultProps: { text: "Đoạn văn bản" }, propsSchema: [{ key: "text", label: "Nội dung", inputType: "textarea" }] },
   { id: "html.span", title: "Span", category: "Typography", tags: ["typography", "text", "inline"], canHaveChildren: false, defaultProps: { text: "Span text" }, propsSchema: [{ key: "text", label: "Nội dung", inputType: "text" }] },
-  { id: "html.label", title: "Label (HTML)", category: "Typography", tags: ["typography", "form", "label"], canHaveChildren: false, defaultProps: { text: "Label", htmlFor: "" }, propsSchema: [{ key: "text", label: "Nội dung", inputType: "text" }, { key: "htmlFor", label: "Gắn với (for)", inputType: "text" }] },
+  { id: "html.label", title: "Label (HTML)", category: "Form", tags: ["typography", "form", "label"], canHaveChildren: false, defaultProps: { text: "Label", htmlFor: "" }, propsSchema: [{ key: "text", label: "Nội dung", inputType: "text" }, { key: "htmlFor", label: "Gắn với (for)", inputType: "text" }] },
 
   // ── Form ──
   { id: "html.button", title: "Button (HTML)", category: "Form", tags: ["form", "action", "button", "click"], canHaveChildren: false, defaultProps: { text: "Button" }, propsSchema: [{ key: "text", label: "Nội dung", inputType: "text" }] },
@@ -34,19 +35,54 @@ const rawHtmlNodes: RawDef[] = [
   { id: "html.switch", title: "Switch (HTML)", category: "Form", tags: ["form", "switch", "toggle"], canHaveChildren: false, defaultProps: { label: "Switch", checked: false }, propsSchema: [{ key: "label", label: "Nội dung", inputType: "text" }, { key: "checked", label: "Đã chọn", inputType: "checkbox" }] },
 
   // ── List ──
-  { id: "html.ul", title: "Unordered List", category: "List", tags: ["list", "unordered", "container"], canHaveChildren: true, defaultProps:{}, defaultStyle:{ direction: "flex-col", gap: 1 }, propsSchema: [] },
-  { id: "html.ol", title: "Ordered List", category: "List", tags: ["list", "ordered", "container"], canHaveChildren: true, defaultProps:{},defaultStyle: { direction: "flex-col", gap: 1 }, propsSchema: [] },
-  { id: "html.li", title: "List Item", category: "List", tags: ["list", "item", "container"], canHaveChildren: true, defaultProps: {},defaultStyle:{ direction: "flex-row", gap: 2 }, propsSchema: [] },
+  {
+    id: "html.ul", title: "Unordered List", category: "List", tags: ["list", "unordered", "container"],
+    canHaveChildren: true, defaultProps: {}, defaultStyle: { direction: "flex-col", gap: 1 }, propsSchema: [],
+    defaultChildren: [1, 2, 3].map((n) => ({
+      defId: "html.li",
+      children: [{ defId: "html.span", props: { text: `Mục ${n}` } }],
+    })),
+  },
+  {
+    id: "html.ol", title: "Ordered List", category: "List", tags: ["list", "ordered", "container"],
+    canHaveChildren: true, defaultProps: {}, defaultStyle: { direction: "flex-col", gap: 1 }, propsSchema: [],
+    defaultChildren: [1, 2, 3].map((n) => ({
+      defId: "html.li",
+      children: [{ defId: "html.span", props: { text: `Bước ${n}` } }],
+    })),
+  },
+  {
+    id: "html.li", title: "List Item", category: "List", tags: ["list", "item", "container"],
+    canHaveChildren: true, defaultProps: {}, defaultStyle: { direction: "flex-row", gap: 2 }, propsSchema: [],
+    defaultChildren: [{ defId: "html.span", props: { text: "Mục danh sách" } }],
+  },
 
   // ── Media ──
   { id: "html.img", title: "Image", category: "Media", tags: ["media", "image", "picture"], canHaveChildren: false, defaultProps: { src: "https://placehold.co/150", alt: "Hình ảnh" }, propsSchema: [{ key: "src", label: "Đường dẫn ảnh", inputType: "text" }, { key: "alt", label: "Alt text", inputType: "text" }] },
   { id: "html.icon", title: "Icon", category: "Media", tags: ["media", "icon", "lucide"], canHaveChildren: false, defaultProps: { name: "Star", size: 24 }, propsSchema: [{ key: "name", label: "Tên icon (lucide)", inputType: "text" }, { key: "size", label: "Kích thước", inputType: "number" }] },
-  { id: "html.separator", title: "Separator (HTML)", category: "Media", tags: ["media", "divider", "line", "separator"], canHaveChildren: false, defaultProps: { orientation: "horizontal" }, propsSchema: [{ key: "orientation", label: "Hướng", inputType: "select", options: ["horizontal", "vertical"] }] },
+  { id: "html.separator", title: "Separator (HTML)", category: "Layout", tags: ["media", "divider", "line", "separator"], canHaveChildren: false, defaultProps: { orientation: "horizontal" }, propsSchema: [{ key: "orientation", label: "Hướng", inputType: "select", options: ["horizontal", "vertical"] }] },
 
   // ── Navigation ──
-  { id: "html.nav", title: "Nav", category: "Navigation", tags: ["navigation", "menu", "container"], canHaveChildren: true, defaultProps:{},defaultStyle: { direction: "flex-row", gap: 4 }, propsSchema: [] },
-  { id: "html.a", title: "Link", category: "Navigation", tags: ["navigation", "link", "anchor"], canHaveChildren: true, defaultProps:{href: "#" },defaultStyle: { direction: "flex-row", gap: 1}, propsSchema: [{ key: "href", label: "Đường dẫn (href)", inputType: "text" }] },
+  {
+    id: "html.nav", title: "Nav", category: "Navigation", tags: ["navigation", "menu", "container"],
+    canHaveChildren: true, defaultProps: {}, defaultStyle: { direction: "flex-row", gap: 4 }, propsSchema: [],
+    defaultChildren: ["Trang chủ", "Giới thiệu", "Liên hệ"].map((text) => ({
+      defId: "html.a",
+      props: { href: "#" },
+      children: [{ defId: "html.span", props: { text } }],
+    })),
+  },
+  {
+    id: "html.a", title: "Link", category: "Navigation", tags: ["navigation", "link", "anchor"],
+    canHaveChildren: true, defaultProps: { href: "#" }, defaultStyle: { direction: "flex-row", gap: 1 },
+    propsSchema: [{ key: "href", label: "Đường dẫn (href)", inputType: "text" }],
+    defaultChildren: [{ defId: "html.span", props: { text: "Liên kết" } }],
+  },
 ];
 
 
-export const htmlNodes: NodeDefinition[] = rawHtmlNodes.map((d) => ({ ...d, nodeKind: "html" }));
+export const htmlNodes: NodeDefinition[] = [...rawHtmlNodes, ...htmlExtraRawNodes].map((d) => ({
+  ...d,
+  tier: d.tier ?? "element",
+  nodeKind: "html",
+}));

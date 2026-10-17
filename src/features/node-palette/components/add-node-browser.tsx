@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -15,12 +15,14 @@ import {
   getReachableComponentIds,
 } from "@/core/store/builder-store";
 import { searchNodes, getNodesByCategory, getNodeDefinition } from "@/core/registry/node-registry";
+import { canContain } from "@/core/registry/node-rules";
+import { SYSTEM_NODE_IDS } from "@/core/registry/system-nodes";
 import { NodeCategory } from "@/core/types/node-definition.types";
 import { NodeListRow } from "./node-list-row";
 
 const CATEGORIES: NodeCategory[] = [
   "Layout", "Typography", "Form", "List", "Media",
-  "Navigation", "Overlay", "Data Display", "Templates",
+  "Navigation", "Overlay", "Data Display", "Feedback", "Templates",
 ];
 
 type Selection = { kind: "definition"; id: string } | { kind: "component"; id: string };
@@ -48,15 +50,24 @@ export function AddNodeBrowser({
   const parentDef = parentNode ? getNodeDefinition(parentNode.type) : undefined;
   const isFolderMode = parentDef?.nodeKind === "folder";
 
-  const availableComponents = componentList.filter((c) => c.id !== ancestorComponentId);
-  const filteredComponents = useMemo(
-    () =>
-      query.trim()
-        ? availableComponents.filter((c) => c.name.toLowerCase().includes(query.trim().toLowerCase()))
-        : availableComponents,
-    [availableComponents, query]
+  const componentInstanceDef = getNodeDefinition(SYSTEM_NODE_IDS.componentInstance);
+  const canAddComponentInstance =
+    !!parentDef &&
+    !!componentInstanceDef &&
+    canContain(parentDef, componentInstanceDef.nodeKind, componentInstanceDef);
+  const availableComponents = componentList.filter(
+    (component) => component.id !== ancestorComponentId && canAddComponentInstance
   );
-  const filteredFlat = useMemo(() => (query.trim() ? searchNodes(query) : null), [query]);
+  const filteredComponents = query.trim()
+    ? availableComponents.filter((component) => component.name.toLowerCase().includes(query.trim().toLowerCase()))
+    : availableComponents;
+  const isAllowedDefinition = (def: NonNullable<ReturnType<typeof getNodeDefinition>>) =>
+    !!parentDef &&
+    (def.nodeKind === "html" || def.nodeKind === "shadcn") &&
+    canContain(parentDef, def.nodeKind, def);
+  const filteredFlat = query.trim()
+    ? searchNodes(query).filter(isAllowedDefinition)
+    : null;
 
   const toggleCategory = (cat: string) => setExpanded((prev) => ({ ...prev, [cat]: !prev[cat] }));
 
@@ -142,7 +153,7 @@ export function AddNodeBrowser({
                     </div>
                   )}
                   {CATEGORIES.map((cat) => {
-                    const nodes = getNodesByCategory(cat);
+                    const nodes = getNodesByCategory(cat).filter(isAllowedDefinition);
                     if (nodes.length === 0) return null;
                     const isOpen = !!expanded[cat];
                     return (

@@ -20,6 +20,20 @@ export function getAllowedChildKinds(def: NodeDefinition): NodeKind[] {
   return def.canHaveChildren ? ["html", "shadcn", "component-instance"] : [];
 }
 
-export function canContain(parentDef: NodeDefinition, childNodeKind: NodeKind): boolean {
-  return getAllowedChildKinds(parentDef).includes(childNodeKind);
+export function canContain(
+  parentDef: NodeDefinition,
+  childNodeKind: NodeKind,
+  childDef?: NodeDefinition
+): boolean {
+  if (!getAllowedChildKinds(parentDef).includes(childNodeKind)) return false;
+  if (parentDef.allowedChildIds && childDef && !parentDef.allowedChildIds.includes(childDef.id)) {
+    return false;
+  }
+  if (childDef?.parentOnly && !childDef.parentOnly.includes(parentDef.id)) return false;
+  return true;
+}
+
+export function isVisibleInPalette(childDef: NodeDefinition, parentDef: NodeDefinition): boolean {
+  if (!childDef.parentOnly) return true;
+  return childDef.parentOnly.includes(parentDef.id);
 }

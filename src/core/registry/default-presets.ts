@@ -1,3 +1,5 @@
+// src/core/registry/default-presets.ts
+
 import { NodeDefinition } from "@/core/types/node-definition.types";
 import { NodeStyle } from "@/core/types/style.types";
 import { getStylePreset } from "./style-presets";
@@ -15,7 +17,9 @@ export const DEFAULT_PRESET_BY_NODE: Record<string, string> = {
   "html.h1": "heading-hero",
   "html.h2": "heading-section",
   "html.h3": "heading-card",
+  "html.h4": "heading-card",
   "html.p": "text-body",
+  "html.small": "text-muted",
   "html.label": "label",
   "shadcn.label": "label",
   "html.ul": "list",
@@ -29,6 +33,11 @@ export const DEFAULT_PRESET_BY_NODE: Record<string, string> = {
   "shadcn.button": "button-soft",
   "html.img": "image-cover",
   "shadcn.card": "card",
+  "html.form": "stack",
+  "html.fieldset": "stack",
+  "html.figure": "stack",
+  "html.details": "stack",
+  "html.dl": "list",
 };
 
 export function resolveDefaultStyle(def: NodeDefinition): NodeStyle {

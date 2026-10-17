@@ -97,7 +97,7 @@ function buildNodeRecursive(
   if (!nodeDef || (nodeDef.nodeKind !== "html" && nodeDef.nodeKind !== "shadcn")) {
     return null;
   }
-  if (!canContain(parentDef, nodeDef.nodeKind)) {
+  if (!canContain(parentDef, nodeDef.nodeKind, nodeDef)) {
     return null;
   }
 

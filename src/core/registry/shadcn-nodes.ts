@@ -3,6 +3,7 @@
 import { NodeDefinition } from "@/core/types/node-definition.types";
 
 import { containerDefaultStyle } from "./html-nodes";
+import { clusterRawNodes } from "./shadcn-cluster-nodes";
 
 
 
@@ -28,6 +29,7 @@ const rawShadcnNodes: RawDef[] = [
     defaultChildren: [
       { defId: "html.h3", props: { text: "Card Title" } },
       { defId: "html.p", props: { text: "Mô tả ngắn cho nội dung card." } },
+      { defId: "shadcn.button", props: { text: "Xem thêm" } },
     ],
   },
   { id: "shadcn.input", title: "Input", category: "Form", tags: ["form", "input", "field", "shadcn"], canHaveChildren: false, defaultProps: { placeholder: "Nhập nội dung...", type: "text" }, propsSchema: [
@@ -37,7 +39,7 @@ const rawShadcnNodes: RawDef[] = [
   { id: "shadcn.textarea", title: "Textarea", category: "Form", tags: ["form", "input", "multiline", "shadcn"], canHaveChildren: false, defaultProps: { placeholder: "Nhập nội dung..." }, propsSchema: [
     { key: "placeholder", label: "Placeholder", inputType: "text" },
   ]},
-  { id: "shadcn.label", title: "Label", category: "Typography", tags: ["typography", "form", "label", "shadcn"], canHaveChildren: false, defaultProps: { text: "Label", htmlFor: "" }, propsSchema: [
+  { id: "shadcn.label", title: "Label", category: "Form", tags: ["typography", "form", "label", "shadcn"], canHaveChildren: false, defaultProps: { text: "Label", htmlFor: "" }, propsSchema: [
     { key: "text", label: "Nội dung", inputType: "text" },
     { key: "htmlFor", label: "Gắn với (for)", inputType: "text" },
   ]},
@@ -64,80 +66,54 @@ const rawShadcnNodes: RawDef[] = [
     { key: "src", label: "Đường dẫn ảnh", inputType: "text" },
     { key: "fallback", label: "Chữ viết tắt (fallback)", inputType: "text" },
   ]},
-  { id: "shadcn.separator", title: "Separator", category: "Media", tags: ["media", "divider", "line", "shadcn"], canHaveChildren: false, defaultProps: { orientation: "horizontal" }, propsSchema: [
+  { id: "shadcn.separator", title: "Separator", category: "Layout", tags: ["media", "divider", "line", "shadcn"], canHaveChildren: false, defaultProps: { orientation: "horizontal" }, propsSchema: [
     { key: "orientation", label: "Hướng", inputType: "select", options: ["horizontal", "vertical"] },
   ]},
 
   // ── Layout ──
-  { id: "shadcn.scroll-area", title: "Scroll Area", category: "Layout", tags: ["layout", "scroll", "container", "shadcn"], canHaveChildren: true, defaultProps: { height: 300 }, propsSchema: [
+  { id: "shadcn.scroll-area", title: "Scroll Area", category: "Layout", tags: ["layout", "scroll", "container", "shadcn"], canHaveChildren: true, defaultProps: { height: 140 },
+    defaultChildren: [1, 2, 3, 4, 5, 6].map((n) => ({ defId: "html.p", props: { text: `Dòng nội dung ${n}` } })),
+    propsSchema: [
     { key: "height", label: "Chiều cao (px)", inputType: "number" },
-  ]},
-  { id: "shadcn.tabs", title: "Tabs", category: "Navigation", tags: ["navigation", "tabs", "shadcn"], canHaveChildren: true, defaultProps: { defaultTab: "tab1" }, propsSchema: [
-    { key: "defaultTab", label: "Tab mặc định", inputType: "text" },
-  ]},
-  { id: "shadcn.accordion", title: "Accordion", category: "Layout", tags: ["layout", "accordion", "collapsible", "shadcn"], canHaveChildren: true, defaultProps: {}, propsSchema: [] },
-  { id: "shadcn.collapsible", title: "Collapsible", category: "Layout", tags: ["layout", "collapsible", "toggle", "shadcn"], canHaveChildren: true, defaultProps: { defaultOpen: false }, propsSchema: [
-    { key: "defaultOpen", label: "Mở mặc định", inputType: "checkbox" },
-  ]},
-  { id: "shadcn.resizable", title: "Resizable", category: "Layout", tags: ["layout", "resizable", "panel", "shadcn"], canHaveChildren: true, defaultProps: { splitDirection: "horizontal" }, propsSchema: [
-    { key: "direction", label: "Hướng chia", inputType: "select", options: ["horizontal", "vertical"] },
   ]},
 
   // ── Feedback ──
-  { id: "shadcn.alert", title: "Alert", category: "Data Display", tags: ["feedback", "alert", "message", "shadcn"], canHaveChildren: false, defaultProps: { title: "Heads up!", description: "Thông báo quan trọng.", variant: "default" }, propsSchema: [
+  { id: "shadcn.alert", title: "Alert", category: "Feedback", tags: ["feedback", "alert", "message", "shadcn"], canHaveChildren: false, defaultProps: { title: "Heads up!", description: "Thông báo quan trọng.", variant: "default" }, propsSchema: [
     { key: "title", label: "Tiêu đề", inputType: "text" },
     { key: "description", label: "Mô tả", inputType: "textarea" },
     { key: "variant", label: "Variant", inputType: "select", options: ["default", "destructive"] },
   ]},
-  { id: "shadcn.alert-dialog", title: "Alert Dialog", category: "Overlay", tags: ["feedback", "dialog", "confirm", "shadcn"], canHaveChildren: true, defaultProps: { triggerText: "Open" }, propsSchema: [
-    { key: "triggerText", label: "Text nút mở", inputType: "text" },
-  ]},
-  { id: "shadcn.dialog", title: "Dialog", category: "Overlay", tags: ["feedback", "dialog", "modal", "shadcn"], canHaveChildren: true, defaultProps: { triggerText: "Open" }, propsSchema: [
-    { key: "triggerText", label: "Text nút mở", inputType: "text" },
-  ]},
-  { id: "shadcn.sheet", title: "Sheet", category: "Overlay", tags: ["feedback", "sheet", "drawer", "shadcn"], canHaveChildren: true, defaultProps: { triggerText: "Open", side: "right" }, propsSchema: [
-    { key: "triggerText", label: "Text nút mở", inputType: "text" },
-    { key: "side", label: "Hướng mở", inputType: "select", options: ["top", "right", "bottom", "left"] },
-  ]},
-  { id: "shadcn.popover", title: "Popover", category: "Overlay", tags: ["feedback", "popover", "shadcn"], canHaveChildren: true, defaultProps: { triggerText: "Open" }, propsSchema: [
-    { key: "triggerText", label: "Text nút mở", inputType: "text" },
-  ]},
-  { id: "shadcn.tooltip", title: "Tooltip", category: "Overlay", tags: ["feedback", "tooltip", "hint", "shadcn"], canHaveChildren: true, defaultProps: { text: "Tooltip text" }, propsSchema: [
+  { id: "shadcn.tooltip", title: "Tooltip", category: "Overlay", tier: "component", tags: ["feedback", "tooltip", "hint", "shadcn"], canHaveChildren: true, defaultProps: { text: "Tooltip text" },
+    defaultChildren: [{ defId: "shadcn.button", props: { text: "Rê chuột vào đây" } }],
+    propsSchema: [
     { key: "text", label: "Nội dung tooltip", inputType: "text" },
   ]},
-  { id: "shadcn.toast", title: "Toast", category: "Overlay", tags: ["feedback", "toast", "notification", "shadcn"], canHaveChildren: false, defaultProps: { title: "Thông báo", description: "" }, propsSchema: [
+  { id: "shadcn.toast", title: "Toast", category: "Feedback", tags: ["feedback", "toast", "notification", "shadcn"], canHaveChildren: false, defaultProps: { title: "Thông báo", description: "" }, propsSchema: [
     { key: "title", label: "Tiêu đề", inputType: "text" },
     { key: "description", label: "Mô tả", inputType: "text" },
   ]},
 
   // ── Data ──
-  { id: "shadcn.table", title: "Table", category: "Data Display", tags: ["data", "table", "grid", "shadcn"], canHaveChildren: true, defaultProps: {}, propsSchema: [] },
-  { id: "shadcn.progress", title: "Progress", category: "Data Display", tags: ["data", "progress", "loading", "shadcn"], canHaveChildren: false, defaultProps: { value: 50 }, propsSchema: [
+  { id: "shadcn.progress", title: "Progress", category: "Feedback", tags: ["data", "progress", "loading", "shadcn"], canHaveChildren: false, defaultProps: { value: 50 }, propsSchema: [
     { key: "value", label: "Giá trị (%)", inputType: "number" },
   ]},
-  { id: "shadcn.skeleton", title: "Skeleton", category: "Data Display", tags: ["data", "skeleton", "loading", "placeholder", "shadcn"], canHaveChildren: false, defaultProps: { width: 100, height: 20 }, propsSchema: [
+  { id: "shadcn.skeleton", title: "Skeleton", category: "Feedback", tags: ["data", "skeleton", "loading", "placeholder", "shadcn"], canHaveChildren: false, defaultProps: { width: 100, height: 20 }, propsSchema: [
     { key: "width", label: "Chiều rộng (px)", inputType: "number" },
     { key: "height", label: "Chiều cao (px)", inputType: "number" },
   ]},
 
   // ── Navigation ──
-  { id: "shadcn.breadcrumb", title: "Breadcrumb", category: "Navigation", tags: ["navigation", "breadcrumb", "path", "shadcn"], canHaveChildren: true, defaultProps: {}, propsSchema: [] },
   { id: "shadcn.pagination", title: "Pagination", category: "Navigation", tags: ["navigation", "pagination", "pages", "shadcn"], canHaveChildren: false, defaultProps: { totalPages: 5, currentPage: 1 }, propsSchema: [
     { key: "totalPages", label: "Tổng số trang", inputType: "number" },
     { key: "currentPage", label: "Trang hiện tại", inputType: "number" },
   ]},
-  { id: "shadcn.navigation-menu", title: "Navigation Menu", category: "Navigation", tags: ["navigation", "menu", "shadcn"], canHaveChildren: true, defaultProps: {}, propsSchema: [] },
-  { id: "shadcn.menubar", title: "Menubar", category: "Navigation", tags: ["navigation", "menubar", "shadcn"], canHaveChildren: true, defaultProps: {}, propsSchema: [] },
 
   // ── Overlay ──
-  { id: "shadcn.dropdown-menu", title: "Dropdown Menu", category: "Overlay", tags: ["overlay", "dropdown", "menu", "shadcn"], canHaveChildren: true, defaultProps: { triggerText: "Menu" }, propsSchema: [
-    { key: "triggerText", label: "Text nút mở", inputType: "text" },
-  ]},
-  { id: "shadcn.context-menu", title: "Context Menu", category: "Overlay", tags: ["overlay", "context", "right-click", "shadcn"], canHaveChildren: true, defaultProps: {}, propsSchema: [] },
-  { id: "shadcn.hover-card", title: "Hover Card", category: "Overlay", tags: ["overlay", "hover", "preview", "shadcn"], canHaveChildren: true, defaultProps: { triggerText: "Hover" }, propsSchema: [
-    { key: "triggerText", label: "Text kích hoạt", inputType: "text" },
-  ]},
 ];
 
-
-export const shadcnNodes: NodeDefinition[] = rawShadcnNodes.map((d) => ({ ...d, nodeKind: "shadcn",version: 1 }));
+export const shadcnNodes: NodeDefinition[] = [...rawShadcnNodes, ...clusterRawNodes].map((def) => ({
+  ...def,
+  tier: def.tier ?? "element",
+  nodeKind: "shadcn" as const,
+  version: 1,
+}));

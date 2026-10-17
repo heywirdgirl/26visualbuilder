@@ -1,3 +1,5 @@
+// src/core/registry/style-presets.ts
+
 import { NodeStyle } from "@/core/types/style.types";
 
 export interface StylePreset {

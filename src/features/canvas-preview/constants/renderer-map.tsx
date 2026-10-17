@@ -18,15 +18,20 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { Breadcrumb, BreadcrumbList } from "@/components/ui/breadcrumb";
-import { NavigationMenu, NavigationMenuList } from "@/components/ui/navigation-menu";
-import { Menubar } from "@/components/ui/menubar";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink } from "@/components/ui/pagination";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from "@/components/ui/accordion";
 import { TreeNode } from "@/core/types/builder.types";
 import { cn } from "@/core/utils/cn";
 import { escapeJsxText, escapeAttr } from "@/core/utils/escape-jsx-text";
 import { SYSTEM_NODE_IDS } from "@/core/registry/system-nodes";
+import { clusterRenderers } from "./cluster-renderers";
+import { htmlExtraRenderers } from "./html-extra-renderers";
 
 // App-only mapping: definitionId -> cách render thật + cách xuất JSX string (code-gen).
 // Ngược lại với NodeDefinition (data thuần), file này KHÔNG được serialize/lưu Supabase.
@@ -59,34 +64,13 @@ function textTagEntry(tag: string): RendererEntry {
   };
 }
 
-// Dùng cho các component overlay/trigger (Dialog, Sheet, Popover, Tabs...) —
-// V1 hiển thị "luôn mở" để dễ chỉnh sửa nội dung, chưa mô phỏng hành vi tương tác thật.
-function placeholderEntry(label: string): RendererEntry {
-  return {
-    jsxTagName: label,
-    render: (node, children, className) => {
-      const props = node.props as { triggerText?: string };
-      return (
-        <div
-          data-node-id={node.id}
-          className={cn("border border-dashed border-muted-foreground/40 rounded-md p-3", className)}
-        >
-          <div className="text-xs font-medium text-muted-foreground mb-2">
-            {label} (V1 preview){props.triggerText ? ` — trigger: "${props.triggerText}"` : ""}
-          </div>
-          <div className="flex flex-col gap-2">{children}</div>
-        </div>
-      );
-    },
-    // Code-gen cho nhóm này chỉ xuất khung + comment nhắc tự hoàn thiện theo docs shadcn/ui —
-    // chưa đủ sub-component (TabsTrigger, DialogTrigger...) để sinh JSX thật hoạt động được.
-    toJsx: (node, childrenJsx, _className, pad) => {
-      const props = node.props as { triggerText?: string };
-      const hint = props.triggerText ? ` (trigger: "${escapeAttr(props.triggerText)}")` : "";
-      return `${pad}{/* TODO: ${label}${hint} — cần tự hoàn thiện theo docs shadcn/ui, V1 chỉ xuất khung cấu trúc */}\n${pad}<div>\n${childrenJsx}\n${pad}</div>`;
-    },
-  };
-}
+const classAttr = (className: string) => (className ? ` className="${escapeAttr(className)}"` : "");
+const valueOf = (node: TreeNode, fallback: string) =>
+  String((node.props as { value?: string }).value ?? fallback);
+const countTabTriggers = (node: TreeNode) =>
+  node.children
+    .filter((child) => child.type === "shadcn.tabs-list")
+    .reduce((count, list) => count + list.children.length, 0);
 
 // ── System nodes (PRD v1.9) ──
 // Page/Component render như 1 container flex bình thường (đã có direction/gap/padding
@@ -509,11 +493,89 @@ export const rendererMap: Record<string, RendererEntry> = {
       return `${pad}<ScrollArea style={{ height: ${Number(props.height) || 300} }}>\n${childrenJsx}\n${pad}</ScrollArea>`;
     },
   },
-  "shadcn.tabs": placeholderEntry("Tabs"),
-  "shadcn.accordion": placeholderEntry("Accordion"),
-  "shadcn.collapsible": placeholderEntry("Collapsible"),
-  "shadcn.resizable": placeholderEntry("Resizable"),
-
+  "shadcn.tabs": {
+    jsxTagName: "Tabs",
+    importStatement: `import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";`,
+    render: (node, children, className) => (
+      <Tabs key={countTabTriggers(node)} data-node-id={node.id} defaultValue="tab-1" className={className}>
+        {children}
+      </Tabs>
+    ),
+    toJsx: (_node, childrenJsx, className, pad) =>
+      `${pad}<Tabs defaultValue="tab-1"${classAttr(className)}>\n${childrenJsx}\n${pad}</Tabs>`,
+  },
+  "shadcn.tabs-list": {
+    jsxTagName: "TabsList",
+    render: (node, children, className) => (
+      <TabsList data-node-id={node.id} className={className}>{children}</TabsList>
+    ),
+  },
+  "shadcn.tabs-trigger": {
+    jsxTagName: "TabsTrigger",
+    render: (node, _children, className) => {
+      const props = node.props as { text: string };
+      return (
+        <TabsTrigger data-node-id={node.id} value={valueOf(node, "tab-1")} className={className}>
+          {props.text}
+        </TabsTrigger>
+      );
+    },
+    toJsx: (node, _children, className, pad) => {
+      const props = node.props as { text: string };
+      return `${pad}<TabsTrigger value="${escapeAttr(valueOf(node, "tab-1"))}"${classAttr(className)}>${escapeJsxText(props.text)}</TabsTrigger>`;
+    },
+  },
+  "shadcn.tabs-content": {
+    jsxTagName: "TabsContent",
+    render: (node, children, className) => (
+      <TabsContent data-node-id={node.id} value={valueOf(node, "tab-1")} className={className}>
+        {children}
+      </TabsContent>
+    ),
+    toJsx: (node, childrenJsx, className, pad) =>
+      `${pad}<TabsContent value="${escapeAttr(valueOf(node, "tab-1"))}"${classAttr(className)}>\n${childrenJsx}\n${pad}</TabsContent>`,
+  },
+  "shadcn.accordion": {
+    jsxTagName: "Accordion",
+    importStatement: `import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";`,
+    render: (node, children, className) => (
+      <Accordion
+        key={node.children.length}
+        data-node-id={node.id}
+        type="single"
+        collapsible
+        defaultValue="item-1"
+        className={className}
+      >
+        {children}
+      </Accordion>
+    ),
+    toJsx: (_node, childrenJsx, className, pad) =>
+      `${pad}<Accordion type="single" collapsible defaultValue="item-1"${classAttr(className)}>\n${childrenJsx}\n${pad}</Accordion>`,
+  },
+  "shadcn.accordion-item": {
+    jsxTagName: "AccordionItem",
+    render: (node, children, className) => (
+      <AccordionItem data-node-id={node.id} value={valueOf(node, "item-1")} className={className}>
+        {children}
+      </AccordionItem>
+    ),
+    toJsx: (node, childrenJsx, className, pad) =>
+      `${pad}<AccordionItem value="${escapeAttr(valueOf(node, "item-1"))}"${classAttr(className)}>\n${childrenJsx}\n${pad}</AccordionItem>`,
+  },
+  "shadcn.accordion-trigger": {
+    jsxTagName: "AccordionTrigger",
+    render: (node, _children, className) => {
+      const props = node.props as { text: string };
+      return <AccordionTrigger data-node-id={node.id} className={className}>{props.text}</AccordionTrigger>;
+    },
+  },
+  "shadcn.accordion-content": {
+    jsxTagName: "AccordionContent",
+    render: (node, children, className) => (
+      <AccordionContent data-node-id={node.id} className={className}>{children}</AccordionContent>
+    ),
+  },
   // ══ shadcn — Feedback ══
   "shadcn.alert": {
     jsxTagName: "Alert",
@@ -532,10 +594,6 @@ export const rendererMap: Record<string, RendererEntry> = {
       return `${pad}<Alert variant="${escapeAttr(props.variant)}">\n${pad}  <AlertTitle>${escapeJsxText(props.title)}</AlertTitle>\n${pad}  <AlertDescription>${escapeJsxText(props.description)}</AlertDescription>\n${pad}</Alert>`;
     },
   },
-  "shadcn.alert-dialog": placeholderEntry("Alert Dialog"),
-  "shadcn.dialog": placeholderEntry("Dialog"),
-  "shadcn.sheet": placeholderEntry("Sheet"),
-  "shadcn.popover": placeholderEntry("Popover"),
   "shadcn.tooltip": {
     jsxTagName: "Tooltip",
     render: (node, children, className) => {
@@ -573,26 +631,6 @@ export const rendererMap: Record<string, RendererEntry> = {
   },
 
   // ══ shadcn — Data ══
-  "shadcn.table": {
-    jsxTagName: "Table",
-    importStatement: `import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";`,
-    render: (node, _children, className) => (
-      <Table data-node-id={node.id} className={className}>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Column</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow>
-            <TableCell>—</TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
-    ),
-    toJsx: (_node, _c, _cls, pad) =>
-      `${pad}<Table>\n${pad}  <TableHeader>\n${pad}    <TableRow>\n${pad}      <TableHead>Column</TableHead>\n${pad}    </TableRow>\n${pad}  </TableHeader>\n${pad}  <TableBody>\n${pad}    <TableRow>\n${pad}      <TableCell>—</TableCell>\n${pad}    </TableRow>\n${pad}  </TableBody>\n${pad}</Table>`,
-  },
   "shadcn.progress": {
     jsxTagName: "Progress",
     importStatement: `import { Progress } from "@/components/ui/progress";`,
@@ -617,17 +655,6 @@ export const rendererMap: Record<string, RendererEntry> = {
   },
 
   // ══ shadcn — Navigation ══
-  "shadcn.breadcrumb": {
-    jsxTagName: "Breadcrumb",
-    importStatement: `import { Breadcrumb, BreadcrumbList } from "@/components/ui/breadcrumb";`,
-    render: (node, children, className) => (
-      <Breadcrumb data-node-id={node.id} className={className}>
-        <BreadcrumbList>{children}</BreadcrumbList>
-      </Breadcrumb>
-    ),
-    toJsx: (_node, childrenJsx, _cls, pad) =>
-      `${pad}<Breadcrumb>\n${pad}  <BreadcrumbList>\n${childrenJsx || pad + "    {/* thêm BreadcrumbItem con */}"}\n${pad}  </BreadcrumbList>\n${pad}</Breadcrumb>`,
-  },
   "shadcn.pagination": {
     jsxTagName: "Pagination",
     importStatement: `import { Pagination, PaginationContent, PaginationItem, PaginationLink } from "@/components/ui/pagination";`,
@@ -658,33 +685,9 @@ export const rendererMap: Record<string, RendererEntry> = {
       return `${pad}<Pagination>\n${pad}  <PaginationContent>\n${items}\n${pad}  </PaginationContent>\n${pad}</Pagination>`;
     },
   },
-  "shadcn.navigation-menu": {
-    jsxTagName: "NavigationMenu",
-    importStatement: `import { NavigationMenu, NavigationMenuList } from "@/components/ui/navigation-menu";`,
-    render: (node, children, className) => (
-      <NavigationMenu data-node-id={node.id} className={className}>
-        <NavigationMenuList>{children}</NavigationMenuList>
-      </NavigationMenu>
-    ),
-    // Lưu ý: childrenJsx được indent theo depth thật của cây, không +1 cho lớp NavigationMenuList
-    // thêm vào đây — nên indent hiển thị lệch nhẹ so với chuẩn, không ảnh hưởng tính đúng của code.
-    toJsx: (_node, childrenJsx, _cls, pad) =>
-      `${pad}<NavigationMenu>\n${pad}  <NavigationMenuList>\n${childrenJsx}\n${pad}  </NavigationMenuList>\n${pad}</NavigationMenu>`,
-  },
-  "shadcn.menubar": {
-    jsxTagName: "Menubar",
-    importStatement: `import { Menubar } from "@/components/ui/menubar";`,
-    render: (node, children, className) => (
-      <Menubar data-node-id={node.id} className={className}>
-        {children}
-      </Menubar>
-    ),
-  },
-
   // ══ shadcn — Overlay ══
-  "shadcn.dropdown-menu": placeholderEntry("Dropdown Menu"),
-  "shadcn.context-menu": placeholderEntry("Context Menu"),
-  "shadcn.hover-card": placeholderEntry("Hover Card"),
+  ...clusterRenderers,
+  ...htmlExtraRenderers,
 };
 
 export function getRendererEntry(defId: string): RendererEntry | undefined {

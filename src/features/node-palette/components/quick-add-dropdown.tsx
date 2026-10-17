@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, Folder, FileText, PackagePlus, Box, type LucideIcon } from "lucide-react";
@@ -14,6 +14,8 @@ import {
   getReachableComponentIds,
 } from "@/core/store/builder-store";
 import { searchNodes, getNodeDefinition } from "@/core/registry/node-registry";
+import { canContain } from "@/core/registry/node-rules";
+import { SYSTEM_NODE_IDS } from "@/core/registry/system-nodes";
 import { getNodeIcon } from "../constants/node-icons";
 import { commonNodeIds } from "../constants/common-node-ids";
 
@@ -41,9 +43,9 @@ function NodeTile({
       type="button"
       title={title}
       onClick={onClick}
-      className="flex h-14 flex-col items-center justify-center gap-1 rounded-md border bg-background px-1 hover:bg-accent active:bg-accent"
+      className="flex h-10 flex-col items-center justify-center gap-1 rounded-md border bg-background  hover:bg-accent active:bg-accent"
     >
-      <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <Icon className="h-3 w-3 shrink-0 text-muted-foreground" />
       <span className="w-full truncate text-center text-[10px] leading-tight">{title}</span>
     </button>
   );
@@ -72,31 +74,32 @@ export function QuickAddDropdown({
   const parentDef = parentNode ? getNodeDefinition(parentNode.type) : undefined;
   const isFolderMode = parentDef?.nodeKind === "folder";
 
-  const availableComponents = componentList.filter((c) => c.id !== ancestorComponentId);
-
-  const filteredComponents = useMemo(
-    () =>
-      query.trim()
-        ? availableComponents.filter((c) => c.name.toLowerCase().includes(query.trim().toLowerCase()))
-        : availableComponents,
-    [availableComponents, query]
+  const componentInstanceDef = getNodeDefinition(SYSTEM_NODE_IDS.componentInstance);
+  const canAddComponentInstance =
+    !!parentDef &&
+    !!componentInstanceDef &&
+    canContain(parentDef, componentInstanceDef.nodeKind, componentInstanceDef);
+  const availableComponents = componentList.filter(
+    (component) => component.id !== ancestorComponentId && canAddComponentInstance
   );
+  const filteredComponents = query.trim()
+    ? availableComponents.filter((component) => component.name.toLowerCase().includes(query.trim().toLowerCase()))
+    : availableComponents;
 
-  const groupedDefs = useMemo(() => {
+  const groupedDefs = (() => {
     const q = query.trim();
-    const defs = searchNodes(q).filter(
-      (def) => def.nodeKind === "html" || def.nodeKind === "shadcn"
-    );
+    const allowed = (def: NonNullable<ReturnType<typeof getNodeDefinition>>) =>
+      (def.nodeKind === "html" || def.nodeKind === "shadcn") &&
+      !!parentDef &&
+      canContain(parentDef, def.nodeKind, def);
+    const defs = searchNodes(q).filter(allowed);
     const groups = new Map<string, typeof defs>();
     const commonIds = new Set<string>();
 
     if (!q) {
       const common = commonNodeIds
         .map((id) => getNodeDefinition(id))
-        .filter(
-          (def): def is NonNullable<typeof def> =>
-            !!def && (def.nodeKind === "html" || def.nodeKind === "shadcn")
-        );
+        .filter((def): def is NonNullable<typeof def> => !!def && allowed(def));
       if (common.length) {
         groups.set("Hay dùng", common);
         common.forEach((def) => commonIds.add(def.id));
@@ -111,7 +114,7 @@ export function QuickAddDropdown({
     }
 
     return Array.from(groups.entries());
-  }, [query]);
+  })();
 
   const handleAddDef = (defId: string) => {
     addNode(parentId, defId);
