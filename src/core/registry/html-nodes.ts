@@ -34,9 +34,27 @@ const rawHtmlNodes: RawDef[] = [
   { id: "html.switch", title: "Switch (HTML)", category: "Form", tags: ["form", "switch", "toggle"], canHaveChildren: false, defaultProps: { label: "Switch", checked: false }, propsSchema: [{ key: "label", label: "Nội dung", inputType: "text" }, { key: "checked", label: "Đã chọn", inputType: "checkbox" }] },
 
   // ── List ──
-  { id: "html.ul", title: "Unordered List", category: "List", tags: ["list", "unordered", "container"], canHaveChildren: true, defaultProps:{}, defaultStyle:{ direction: "flex-col", gap: 1 }, propsSchema: [] },
-  { id: "html.ol", title: "Ordered List", category: "List", tags: ["list", "ordered", "container"], canHaveChildren: true, defaultProps:{},defaultStyle: { direction: "flex-col", gap: 1 }, propsSchema: [] },
-  { id: "html.li", title: "List Item", category: "List", tags: ["list", "item", "container"], canHaveChildren: true, defaultProps: {},defaultStyle:{ direction: "flex-row", gap: 2 }, propsSchema: [] },
+  {
+    id: "html.ul", title: "Unordered List", category: "List", tags: ["list", "unordered", "container"],
+    canHaveChildren: true, defaultProps: {}, defaultStyle: { direction: "flex-col", gap: 1 }, propsSchema: [],
+    defaultChildren: [1, 2, 3].map((n) => ({
+      defId: "html.li",
+      children: [{ defId: "html.span", props: { text: `Mục ${n}` } }],
+    })),
+  },
+  {
+    id: "html.ol", title: "Ordered List", category: "List", tags: ["list", "ordered", "container"],
+    canHaveChildren: true, defaultProps: {}, defaultStyle: { direction: "flex-col", gap: 1 }, propsSchema: [],
+    defaultChildren: [1, 2, 3].map((n) => ({
+      defId: "html.li",
+      children: [{ defId: "html.span", props: { text: `Bước ${n}` } }],
+    })),
+  },
+  {
+    id: "html.li", title: "List Item", category: "List", tags: ["list", "item", "container"],
+    canHaveChildren: true, defaultProps: {}, defaultStyle: { direction: "flex-row", gap: 2 }, propsSchema: [],
+    defaultChildren: [{ defId: "html.span", props: { text: "Mục danh sách" } }],
+  },
 
   // ── Media ──
   { id: "html.img", title: "Image", category: "Media", tags: ["media", "image", "picture"], canHaveChildren: false, defaultProps: { src: "https://placehold.co/150", alt: "Hình ảnh" }, propsSchema: [{ key: "src", label: "Đường dẫn ảnh", inputType: "text" }, { key: "alt", label: "Alt text", inputType: "text" }] },
@@ -44,8 +62,21 @@ const rawHtmlNodes: RawDef[] = [
   { id: "html.separator", title: "Separator (HTML)", category: "Media", tags: ["media", "divider", "line", "separator"], canHaveChildren: false, defaultProps: { orientation: "horizontal" }, propsSchema: [{ key: "orientation", label: "Hướng", inputType: "select", options: ["horizontal", "vertical"] }] },
 
   // ── Navigation ──
-  { id: "html.nav", title: "Nav", category: "Navigation", tags: ["navigation", "menu", "container"], canHaveChildren: true, defaultProps:{},defaultStyle: { direction: "flex-row", gap: 4 }, propsSchema: [] },
-  { id: "html.a", title: "Link", category: "Navigation", tags: ["navigation", "link", "anchor"], canHaveChildren: true, defaultProps:{href: "#" },defaultStyle: { direction: "flex-row", gap: 1}, propsSchema: [{ key: "href", label: "Đường dẫn (href)", inputType: "text" }] },
+  {
+    id: "html.nav", title: "Nav", category: "Navigation", tags: ["navigation", "menu", "container"],
+    canHaveChildren: true, defaultProps: {}, defaultStyle: { direction: "flex-row", gap: 4 }, propsSchema: [],
+    defaultChildren: ["Trang chủ", "Giới thiệu", "Liên hệ"].map((text) => ({
+      defId: "html.a",
+      props: { href: "#" },
+      children: [{ defId: "html.span", props: { text } }],
+    })),
+  },
+  {
+    id: "html.a", title: "Link", category: "Navigation", tags: ["navigation", "link", "anchor"],
+    canHaveChildren: true, defaultProps: { href: "#" }, defaultStyle: { direction: "flex-row", gap: 1 },
+    propsSchema: [{ key: "href", label: "Đường dẫn (href)", inputType: "text" }],
+    defaultChildren: [{ defId: "html.span", props: { text: "Liên kết" } }],
+  },
 ];
 
 
