@@ -3,6 +3,7 @@
 import { NodeDefinition } from "@/core/types/node-definition.types";
 
 import { containerDefaultStyle } from "./html-nodes";
+import { clusterRawNodes } from "./shadcn-cluster-nodes";
 
 
 
@@ -140,4 +141,9 @@ const rawShadcnNodes: RawDef[] = [
 ];
 
 
-export const shadcnNodes: NodeDefinition[] = rawShadcnNodes.map((d) => ({ ...d, nodeKind: "shadcn",version: 1 }));
+const clusterIds = new Set(clusterRawNodes.map((def) => def.id));
+
+export const shadcnNodes: NodeDefinition[] = [
+  ...rawShadcnNodes.filter((def) => !clusterIds.has(def.id)),
+  ...clusterRawNodes,
+].map((def) => ({ ...def, nodeKind: "shadcn", version: 1 }));

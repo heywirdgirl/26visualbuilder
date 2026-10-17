@@ -35,6 +35,14 @@ export interface PropMeta {
   options?: string[];
 }
 
+export type NodeTier = "element" | "component" | "block";
+
+export interface DefaultChildSpec {
+  defId: string;
+  props?: Record<string, unknown>;
+  children?: DefaultChildSpec[];
+}
+
 // DATA THUẦN — không chứa component/JSX nào. Có thể JSON.stringify,
 // lưu Supabase, export/import, chia sẻ giữa user mà không phụ thuộc React.
 
@@ -50,6 +58,9 @@ export interface NodeDefinition {
   defaultProps: Record<string, unknown>;
   defaultStyle?: Partial<StyleProps>; // 👈 mới — chỉ set cho definition cần layout mặc định
   propsSchema: PropMeta[];
-  defaultChildren?: { defId: string; props?: Record<string, unknown> }[];
+  defaultChildren?: DefaultChildSpec[];
   icon?: string;
+  tier?: NodeTier;
+  parentOnly?: string[];
+  allowedChildIds?: string[];
 }
