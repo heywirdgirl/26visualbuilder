@@ -41,9 +41,9 @@ function NodeTile({
       type="button"
       title={title}
       onClick={onClick}
-      className="flex h-14 flex-col items-center justify-center gap-1 rounded-md border bg-background px-1 hover:bg-accent active:bg-accent"
+      className="flex h-10 flex-col items-center justify-center gap-1 rounded-md border bg-background  hover:bg-accent active:bg-accent"
     >
-      <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <Icon className="h-3 w-3 shrink-0 text-muted-foreground" />
       <span className="w-full truncate text-center text-[10px] leading-tight">{title}</span>
     </button>
   );

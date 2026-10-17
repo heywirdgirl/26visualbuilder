@@ -1,3 +1,5 @@
+// src/core/registry/default-presets.ts
+
 import { NodeDefinition } from "@/core/types/node-definition.types";
 import { NodeStyle } from "@/core/types/style.types";
 import { getStylePreset } from "./style-presets";
