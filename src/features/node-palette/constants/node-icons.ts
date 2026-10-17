@@ -1,3 +1,5 @@
+// features/node-palette/constants/node-icons.ts
+
 import {
   AlignJustify,
   AlignLeft,
