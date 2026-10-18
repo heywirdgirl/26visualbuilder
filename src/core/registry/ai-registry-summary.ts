@@ -1,3 +1,5 @@
+// src/core/registry/ai-registry-summary.ts
+
 import { nodeRegistry } from "./node-registry";
 
 export interface RegistrySummaryEntry {

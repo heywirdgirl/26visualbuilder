@@ -1,3 +1,4 @@
+// src/core/utils/apply-ai-operations.ts
 import { TreeNode } from "@/core/types/builder.types";
 import { AiNode, AiOperation } from "@/core/types/ai-operation.types";
 import { NodeDefinition, PropInputType } from "@/core/types/node-definition.types";

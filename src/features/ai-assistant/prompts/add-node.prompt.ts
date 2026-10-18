@@ -1,3 +1,6 @@
+// src/features/ai-assistant/prompts/add-node.prompt.ts
+
+
 import { RegistrySummaryEntry } from "@/core/registry/ai-registry-summary";
 import { STYLE_PRESETS } from "@/core/registry/style-presets";
 import { PALETTE_TOKENS } from "@/core/registry/color-palette";
