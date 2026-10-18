@@ -10,7 +10,13 @@ import { AiContextPayload } from "../utils/build-ai-context";
 import { findInTree, outlineTree } from "../utils/outline-tree";
 
 function formatRegistryEntry(entry: RegistrySummaryEntry): string {
-  const childInfo = entry.canHaveChildren ? "can have children" : "leaf, no children";
+  const childInfo = !entry.canHaveChildren
+    ? "leaf, no children"
+    : entry.sealed
+      ? "composite: add WITHOUT children (sample content is built in)"
+      : entry.prefilled
+        ? "can have children (has sample content: omit children to keep it)"
+        : "can have children";
   const props = entry.propKeys.length > 0 ? entry.propKeys.join(", ") : "(no props)";
   return `- ${entry.id} | ${entry.title} | ${childInfo} | props: ${props}`;
 }
@@ -57,6 +63,7 @@ STRICT RULES:
 7. Output size: at most ~40 nodes. If the user asks for a list/grid without a count, create 3 items. Never write long style objects when a preset exists.
 8. Repeated items (cards, features, pricing tiers, products) MUST be children of ONE grid container (preset grid-2/grid-3/grid-4) — never separate siblings in a vertical stack.
 9. Write real, concise copy in the user's language. "summary": one short sentence in the user's language.
+10. Composite nodes (Tabs, Accordion, Table, Dialog, Carousel...) already include sample content. Add them WITHOUT "children" and customize text only via "props" on the node itself.
 
 PRESETS (use as "preset": "<name>"):
 ${formatPresets()}

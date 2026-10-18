@@ -4,7 +4,8 @@ import { NodeDefinition } from "@/core/types/node-definition.types";
 
 import { containerDefaultStyle } from "./html-nodes";
 import { clusterRawNodes } from "./shadcn-cluster-nodes";
-
+import { extraRawNodesA } from "./shadcn-extra-nodes";
+import { extraRawNodesB } from "./shadcn-extra-nodes-b";
 
 
 type RawDef = Omit<NodeDefinition, "nodeKind">;
@@ -111,7 +112,12 @@ const rawShadcnNodes: RawDef[] = [
   // ── Overlay ──
 ];
 
-export const shadcnNodes: NodeDefinition[] = [...rawShadcnNodes, ...clusterRawNodes].map((def) => ({
+export const shadcnNodes: NodeDefinition[] = [
+  ...rawShadcnNodes,
+  ...clusterRawNodes,
+  ...extraRawNodesA,
+  ...extraRawNodesB,
+].map((def) => ({
   ...def,
   tier: def.tier ?? "element",
   nodeKind: "shadcn" as const,

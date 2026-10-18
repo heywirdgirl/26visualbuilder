@@ -76,8 +76,60 @@ export const uiDependencies: Record<string, string[]> = {
   "shadcn.resizable": ["resizable"],
   "shadcn.resizable-panel": ["resizable"],
   "shadcn.resizable-handle": ["resizable"],
+  "shadcn.slider": ["slider"],
+  "shadcn.toggle": ["toggle"],
+  "shadcn.toggle-group": ["toggle-group", "toggle"],
+  "shadcn.toggle-group-item": ["toggle-group", "toggle"],
+  "shadcn.aspect-ratio": ["aspect-ratio"],
+  "shadcn.input-otp": ["input-otp"],
+  "shadcn.calendar": ["calendar", "button"],
+  "shadcn.carousel": ["carousel", "button"],
+  "shadcn.carousel-item": ["carousel", "button"],
+  "shadcn.command": ["command", "dialog", "input-group"],
+  "shadcn.command-input": ["command", "dialog", "input-group"],
+  "shadcn.command-list": ["command", "dialog", "input-group"],
+  "shadcn.command-empty": ["command", "dialog", "input-group"],
+  "shadcn.command-group": ["command", "dialog", "input-group"],
+  "shadcn.command-item": ["command", "dialog", "input-group"],
+  "shadcn.command-separator": ["command", "dialog", "input-group"],
+  "shadcn.drawer": ["drawer"],
+  "shadcn.drawer-header": ["drawer"],
+  "shadcn.drawer-title": ["drawer"],
+  "shadcn.drawer-description": ["drawer"],
+  "shadcn.drawer-footer": ["drawer"],
 };
 
 export function getUiDependencies(defId: string): string[] {
   return uiDependencies[defId] ?? [];
 }
+
+const UI_NPM_PACKAGES: Record<string, Record<string, string>> = {
+  "input-otp": { "input-otp": "^1.5.0" },
+  calendar: { "date-fns": "^4.4.0", "react-day-picker": "^10.0.2" },
+  carousel: { "embla-carousel-react": "^8.6.0" },
+  command: { cmdk: "^1.1.1" },
+  drawer: { vaul: "^1.1.2" },
+};
+
+export function getNpmPackagesForUiSlugs(slugs: string[]): Record<string, string> {
+  const dependencies = slugs.reduce<Record<string, string>>(
+    (dependencies, slug) => ({ ...dependencies, ...(UI_NPM_PACKAGES[slug] ?? {}) }),
+    {}
+  );
+  if (slugs.length > 0) {
+    dependencies.shadcn = "^4.12.0";
+    dependencies["tw-animate-css"] = "^1.4.0";
+  }
+  return dependencies;
+}
+
+export const UI_PEER_SLUGS: Record<string, string[]> = {
+  pagination: ["button"],
+  "alert-dialog": ["button"],
+  dialog: ["button"],
+  calendar: ["button"],
+  carousel: ["button"],
+  command: ["dialog"],
+  "input-group": ["button", "input", "textarea"],
+  "toggle-group": ["toggle"],
+};
