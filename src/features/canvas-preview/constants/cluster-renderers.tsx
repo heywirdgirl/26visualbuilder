@@ -19,8 +19,8 @@ import {
   NavigationMenuLink,
 } from "@/components/ui/navigation-menu";
 
-const classAttr = (className: string) => (className ? ` className="${escapeAttr(className)}"` : "");
-const prop = (node: TreeNode, key: string, fallback = "") =>
+export const classAttr = (className: string) => (className ? ` className="${escapeAttr(className)}"` : "");
+export const prop = (node: TreeNode, key: string, fallback = "") =>
   String((node.props as Record<string, unknown>)[key] ?? fallback);
 
 export function textEntry(jsxTagName: string, tag: string, base: string): RendererEntry {
@@ -53,7 +53,7 @@ export function leafEntry(jsxTagName: string, tag: string, base: string): Render
   };
 }
 
-function overlayEntry(options: {
+export function overlayEntry(options: {
   label: string;
   root: string;
   trigger: string;

@@ -4,7 +4,6 @@ import { create } from "zustand";
 import { TreeNode } from "@/core/types/builder.types";
 import { PageCapture } from "@/core/types/page-capture.types";
 import { StyleProps, Breakpoint } from "@/core/types/style.types";
-import { DefaultChildSpec } from "@/core/types/node-definition.types";
 import { AiOperation } from "@/core/types/ai-operation.types";
 import { getNodeDefinition } from "@/core/registry/node-registry";
 import { resolveDefaultStyle } from "@/core/registry/default-presets";
@@ -12,6 +11,7 @@ import { getStylePreset } from "@/core/registry/style-presets";
 import { canContain } from "@/core/registry/node-rules";
 import { SYSTEM_NODE_IDS } from "@/core/registry/system-nodes";
 import { applyAiOperationsToTree, ApplyAiOperationsResult } from "@/core/utils/apply-ai-operations";
+import { buildNodeFromSpec } from "@/core/utils/build-node-tree";
 import { normalizeClusterValues } from "@/core/utils/normalize-cluster-values";
 import { useMemo } from "react";
 import type { User } from "@supabase/supabase-js";
@@ -109,33 +109,6 @@ function findParent(node: TreeNode, childId: string): TreeNode | null {
     if (found) return found;
   }
   return null;
-}
-
-const MAX_DEPTH = 8;
-
-function buildNodeFromSpec(
-  defId: string,
-  overrideProps?: Record<string, unknown>,
-  childSpecs?: DefaultChildSpec[],
-  depth = 0
-): TreeNode | null {
-  if (depth > MAX_DEPTH) return null;
-  const def = getNodeDefinition(defId);
-  if (!def) return null;
-  const specs = childSpecs ?? def.defaultChildren ?? [];
-  return {
-    id: crypto.randomUUID(),
-    type: defId,
-    props: { ...structuredClone(def.defaultProps), ...structuredClone(overrideProps ?? {}) },
-    style: resolveDefaultStyle(def),
-    children: specs
-      .map((spec) => buildNodeFromSpec(spec.defId, spec.props, spec.children, depth + 1))
-      .filter((node): node is TreeNode => node !== null),
-  };
-}
-
-export function buildNodeTree(spec: DefaultChildSpec): TreeNode | null {
-  return buildNodeFromSpec(spec.defId, spec.props, spec.children);
 }
 
 // Đường đi root -> ... -> target (bao gồm target). Vì Component không thể lồng cấu trúc

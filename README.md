@@ -43,17 +43,24 @@ src
 │       ├── accordion.tsx
 │       ├── alert-dialog.tsx
 │       ├── alert.tsx
+│       ├── aspect-ratio.tsx
 │       ├── avatar.tsx
 │       ├── badge.tsx
 │       ├── breadcrumb.tsx
 │       ├── button.tsx
+│       ├── calendar.tsx
 │       ├── card.tsx
+│       ├── carousel.tsx
 │       ├── checkbox.tsx
 │       ├── collapsible.tsx
+│       ├── command.tsx
 │       ├── context-menu.tsx
 │       ├── dialog.tsx
+│       ├── drawer.tsx
 │       ├── dropdown-menu.tsx
 │       ├── hover-card.tsx
+│       ├── input-group.tsx
+│       ├── input-otp.tsx
 │       ├── input.tsx
 │       ├── label.tsx
 │       ├── menubar.tsx
@@ -68,11 +75,14 @@ src
 │       ├── separator.tsx
 │       ├── sheet.tsx
 │       ├── skeleton.tsx
+│       ├── slider.tsx
 │       ├── sonner.tsx
 │       ├── switch.tsx
 │       ├── table.tsx
 │       ├── tabs.tsx
 │       ├── textarea.tsx
+│       ├── toggle-group.tsx
+│       ├── toggle.tsx
 │       └── tooltip.tsx
 ├── core
 │   ├── providers
@@ -88,7 +98,9 @@ src
 │   │   ├── node-registry.ts
 │   │   ├── node-rules.ts
 │   │   ├── shadcn-cluster-nodes.ts
-│   │   ├── shadcn-nodes.ts
+│   │       ├── shadcn-extra-nodes-b.ts
+│   │       ├── shadcn-extra-nodes.ts
+│   │       ├── shadcn-nodes.ts
 │   │   ├── style-presets.ts
 │   │   ├── system-nodes.ts
 │   │   └── ui-dependencies.ts
@@ -107,6 +119,7 @@ src
 │   │   └── style.types.ts
 │   └── utils
 │       ├── apply-ai-operations.ts
+│       ├── build-node-tree.ts
 │       ├── cn.ts
 │       ├── escape-jsx-text.ts
 │       ├── normalize-cluster-values.ts
@@ -143,6 +156,8 @@ src
 │   │   ├── constants
 │   │   │   ├── cluster-renderers.tsx
 │   │   │   ├── html-extra-renderers.tsx
+│   │   │   ├── shadcn-extra-renderers-b.tsx
+│   │   │   ├── shadcn-extra-renderers.tsx
 │   │   │   └── renderer-map.tsx
 │   │   └── utils
 │   │       ├── capture-active-page.ts

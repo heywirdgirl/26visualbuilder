@@ -20,6 +20,10 @@ function collectFixes(node: TreeNode, fixes: Map<string, string>) {
     assign(node.children.filter((child) => child.type === "shadcn.accordion-item"), "item");
   }
 
+  if (node.type === "shadcn.toggle-group") {
+    assign(node.children.filter((child) => child.type === "shadcn.toggle-group-item"), "item");
+  }
+
   node.children.forEach((child) => collectFixes(child, fixes));
 }
 

@@ -1,3 +1,4 @@
+// src/core/utils/apply-ai-operations.ts
 import { TreeNode } from "@/core/types/builder.types";
 import { AiNode, AiOperation } from "@/core/types/ai-operation.types";
 import { NodeDefinition, PropInputType } from "@/core/types/node-definition.types";
@@ -5,6 +6,7 @@ import { NodeStyle, StyleProps, STYLE_LAYER_KEYS, STYLE_PROP_KEYS } from "@/core
 import { getNodeDefinition } from "@/core/registry/node-registry";
 import { canContain } from "@/core/registry/node-rules";
 import { getStylePreset } from "@/core/registry/style-presets";
+import { buildNodeFromSpec } from "@/core/utils/build-node-tree";
 
 export interface ApplyAiOperationsResult {
   tree: TreeNode;
@@ -101,13 +103,20 @@ function buildNodeRecursive(
     return null;
   }
 
-  const children = parentDef.canHaveChildren
-    ? (aiNode.children ?? []).map((child) => {
-        const builtChild = buildNodeRecursive(child, nodeDef, stats);
-        if (!builtChild) stats.skippedNested++;
-        return builtChild;
-      }).filter((child): child is TreeNode => child !== null)
-    : [];
+  const useDefaults = aiNode.children === undefined && (nodeDef.defaultChildren?.length ?? 0) > 0;
+  const children: TreeNode[] = useDefaults
+    ? (nodeDef.defaultChildren ?? [])
+        .map((spec) => buildNodeFromSpec(spec.defId, spec.props, spec.children))
+        .filter((child): child is TreeNode => child !== null)
+    : nodeDef.canHaveChildren
+      ? (aiNode.children ?? [])
+          .map((child) => {
+            const built = buildNodeRecursive(child, nodeDef, stats);
+            if (!built) stats.skippedNested++;
+            return built;
+          })
+          .filter((child): child is TreeNode => child !== null)
+      : [];
 
   return {
     id: crypto.randomUUID(),

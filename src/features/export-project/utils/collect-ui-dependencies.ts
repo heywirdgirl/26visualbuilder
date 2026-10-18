@@ -2,7 +2,7 @@
 
 
 import { TreeNode } from "@/core/types/builder.types";
-import { getUiDependencies } from "@/core/registry/ui-dependencies";
+import { getUiDependencies, UI_PEER_SLUGS } from "@/core/registry/ui-dependencies";
 
 // Duyệt TOÀN BỘ Project Tree (App/Pages + Components/mọi Component canonical) — không cần
 // resolve Component Instance riêng, vì nội dung thật của mọi Component đã nằm sẵn ngay
@@ -16,6 +16,8 @@ export function collectRequiredUiSlugs(root: TreeNode): string[] {
     node.children.forEach(walk);
   }
   walk(root);
+
+  slugs.forEach((slug) => (UI_PEER_SLUGS[slug] ?? []).forEach((peer) => slugs.add(peer)));
 
   return Array.from(slugs);
 }

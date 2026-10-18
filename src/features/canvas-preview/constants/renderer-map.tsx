@@ -32,6 +32,8 @@ import { escapeJsxText, escapeAttr } from "@/core/utils/escape-jsx-text";
 import { SYSTEM_NODE_IDS } from "@/core/registry/system-nodes";
 import { clusterRenderers } from "./cluster-renderers";
 import { htmlExtraRenderers } from "./html-extra-renderers";
+import { shadcnExtraRenderers } from "./shadcn-extra-renderers";
+import { shadcnExtraRenderersB } from "./shadcn-extra-renderers-b";
 
 // App-only mapping: definitionId -> cách render thật + cách xuất JSX string (code-gen).
 // Ngược lại với NodeDefinition (data thuần), file này KHÔNG được serialize/lưu Supabase.
@@ -688,6 +690,8 @@ export const rendererMap: Record<string, RendererEntry> = {
   // ══ shadcn — Overlay ══
   ...clusterRenderers,
   ...htmlExtraRenderers,
+  ...shadcnExtraRenderers,
+  ...shadcnExtraRenderersB,
 };
 
 export function getRendererEntry(defId: string): RendererEntry | undefined {
