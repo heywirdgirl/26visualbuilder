@@ -11,6 +11,7 @@ import { collectRequiredUiSlugs } from "../utils/collect-ui-dependencies";
 import { fetchUiFiles } from "../utils/fetch-ui-files";
 import { buildProjectZip, downloadBlob } from "../utils/build-zip";
 import { slugifyPathSegment } from "@/features/code-generator/utils/path-utils";
+import { getNpmPackagesForUiSlugs } from "@/core/registry/ui-dependencies";
 
 export function useExportProject() {
   const tree = useBuilderStore((s) => s.tree);
@@ -19,9 +20,12 @@ export function useExportProject() {
   const exportProjectZip = async (projectName: string) => {
     setIsExporting(true);
     try {
-      const templateFiles = getProjectTemplateFiles(projectName);
       const generatedFiles = exportProject(tree); // app/page.tsx, components/Header.tsx... (V1.9)
       const requiredSlugs = collectRequiredUiSlugs(tree);
+      const templateFiles = getProjectTemplateFiles(
+        projectName,
+        getNpmPackagesForUiSlugs(requiredSlugs)
+      );
       const uiFiles = await fetchUiFiles(requiredSlugs); // chỉ đúng file ui/*.tsx thật cần dùng
 
       const allFiles = [...templateFiles, ...generatedFiles, ...uiFiles];

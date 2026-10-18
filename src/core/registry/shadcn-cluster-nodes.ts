@@ -2,11 +2,11 @@ import type { DefaultChildSpec, NodeCategory, NodeDefinition } from "@/core/type
 
 type RawDef = Omit<NodeDefinition, "nodeKind">;
 
-const D = (count: number, create: (index: number) => DefaultChildSpec) =>
+export const D = (count: number, create: (index: number) => DefaultChildSpec) =>
   Array.from({ length: count }, (_, index) => create(index + 1));
-const p = (text: string): DefaultChildSpec => ({ defId: "html.p", props: { text } });
+export const p = (text: string): DefaultChildSpec => ({ defId: "html.p", props: { text } });
 
-const txt = (
+export const txt = (
   id: string,
   title: string,
   parent: string | string[],
@@ -23,7 +23,7 @@ const txt = (
   parentOnly: Array.isArray(parent) ? parent : [parent],
 });
 
-const box = (
+export const box = (
   id: string,
   title: string,
   parent: string | string[],
@@ -41,7 +41,7 @@ const box = (
   ...extra,
 });
 
-const leaf = (
+export const leaf = (
   id: string,
   title: string,
   parent: string,
@@ -59,7 +59,7 @@ const leaf = (
   ...extra,
 });
 
-const overlay = (
+export const overlay = (
   id: string,
   title: string,
   category: NodeCategory,
