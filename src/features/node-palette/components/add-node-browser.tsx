@@ -6,7 +6,7 @@ import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronRight, Search } from "lucide-react";
+import { Box, Search } from "lucide-react";
 import {
   useBuilderStore,
   findNode,
@@ -14,16 +14,14 @@ import {
   useAncestorComponentId,
   getReachableComponentIds,
 } from "@/core/store/builder-store";
-import { searchNodes, getNodesByCategory, getNodeDefinition } from "@/core/registry/node-registry";
+import { getNodeDefinition } from "@/core/registry/node-registry";
 import { canContain } from "@/core/registry/node-rules";
 import { SYSTEM_NODE_IDS } from "@/core/registry/system-nodes";
-import { NodeCategory } from "@/core/types/node-definition.types";
+import type { NodeDefinition, NodeTier } from "@/core/types/node-definition.types";
+import { getNodeIcon } from "../constants/node-icons";
 import { NodeListRow } from "./node-list-row";
-
-const CATEGORIES: NodeCategory[] = [
-  "Layout", "Typography", "Form", "List", "Media",
-  "Navigation", "Overlay", "Data Display", "Feedback", "Templates",
-];
+import { buildPaletteData } from "../utils/palette-data";
+import { PaletteSection, PaletteTabs, TIER_BADGE } from "./palette-sections";
 
 type Selection = { kind: "definition"; id: string } | { kind: "component"; id: string };
 
@@ -44,11 +42,18 @@ export function AddNodeBrowser({
 
   const [query, setQuery] = useState("");
   const [selection, setSelection] = useState<Selection | null>(null);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({ Layout: true, Form: true });
+  const [tab, setTab] = useState<NodeTier>("element");
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const parentNode = parentId ? findNode(tree, parentId) : null;
   const parentDef = parentNode ? getNodeDefinition(parentNode.type) : undefined;
   const isFolderMode = parentDef?.nodeKind === "folder";
+  const searching = query.trim().length > 0;
+  const data = buildPaletteData(parentDef, query);
+  const groups = tab === "component" ? data.component : data.element;
+  const isOpen = (key: string, index: number) => expanded[`${tab}:${key}`] ?? index === 0;
+  const toggle = (key: string, index: number) =>
+    setExpanded((previous) => ({ ...previous, [`${tab}:${key}`]: !isOpen(key, index) }));
 
   const componentInstanceDef = getNodeDefinition(SYSTEM_NODE_IDS.componentInstance);
   const canAddComponentInstance =
@@ -58,18 +63,30 @@ export function AddNodeBrowser({
   const availableComponents = componentList.filter(
     (component) => component.id !== ancestorComponentId && canAddComponentInstance
   );
-  const filteredComponents = query.trim()
+  const filteredComponents = searching
     ? availableComponents.filter((component) => component.name.toLowerCase().includes(query.trim().toLowerCase()))
     : availableComponents;
-  const isAllowedDefinition = (def: NonNullable<ReturnType<typeof getNodeDefinition>>) =>
-    !!parentDef &&
-    (def.nodeKind === "html" || def.nodeKind === "shadcn") &&
-    canContain(parentDef, def.nodeKind, def);
-  const filteredFlat = query.trim()
-    ? searchNodes(query).filter(isAllowedDefinition)
-    : null;
 
-  const toggleCategory = (cat: string) => setExpanded((prev) => ({ ...prev, [cat]: !prev[cat] }));
+  const defRow = (def: NodeDefinition) => (
+    <NodeListRow
+      key={def.id}
+      title={def.title}
+      Icon={getNodeIcon(def.id)}
+      badge={searching ? TIER_BADGE[def.tier ?? "element"] : undefined}
+      selected={selection?.kind === "definition" && selection.id === def.id}
+      onClick={() => setSelection({ kind: "definition", id: def.id })}
+    />
+  );
+  const projectRows = (list: { id: string; name: string }[]) =>
+    list.map((component) => (
+      <NodeListRow
+        key={component.id}
+        title={component.name}
+        Icon={Box}
+        selected={selection?.kind === "component" && selection.id === component.id}
+        onClick={() => setSelection({ kind: "component", id: component.id })}
+      />
+    ));
 
   const handleClose = () => {
     setQuery("");
@@ -108,77 +125,60 @@ export function AddNodeBrowser({
         ) : (
           <>
             <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
                 autoFocus value={query} onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search node..." className="pl-7"
               />
             </div>
 
-            <div className="flex-1 overflow-y-auto -mx-2 px-2">
-              {filteredFlat ? (
-                <>
-                  {filteredComponents.map((c) => (
-                    <NodeListRow
-                      key={c.id} title={c.name} iconName="Box"
-                      selected={selection?.kind === "component" && selection.id === c.id}
-                      onClick={() => setSelection({ kind: "component", id: c.id })}
-                    />
-                  ))}
-                  {filteredFlat.map((def) => (
-                    <NodeListRow
-                      key={def.id} title={def.title} iconName={def.icon}
-                      selected={selection?.kind === "definition" && selection.id === def.id}
-                      onClick={() => setSelection({ kind: "definition", id: def.id })}
-                    />
-                  ))}
-                  {filteredComponents.length === 0 && filteredFlat.length === 0 && (
-                    <p className="text-xs text-muted-foreground text-center py-4">Không tìm thấy node nào</p>
-                  )}
-                </>
+            {!searching && !data.sealed && (
+              <div className="-mx-2">
+                <PaletteTabs value={tab} onChange={setTab} counts={data.counts} />
+              </div>
+            )}
+
+            <div className="-mx-2 flex-1 overflow-y-auto px-2">
+              {searching ? (
+                filteredComponents.length + data.searchResults.length === 0 ? (
+                  <p className="py-4 text-center text-xs text-muted-foreground">
+                    Không tìm thấy node nào
+                  </p>
+                ) : (
+                  <>
+                    {projectRows(filteredComponents)}
+                    {data.searchResults.map(defRow)}
+                  </>
+                )
               ) : (
                 <>
-                  {availableComponents.length > 0 && (
-                    <div className="mb-1">
-                      <p className="text-sm font-medium px-2 py-1.5">My Components</p>
-                      <div className="pl-4">
-                        {availableComponents.map((c) => (
-                          <NodeListRow
-                            key={c.id} title={c.name} iconName="Box"
-                            selected={selection?.kind === "component" && selection.id === c.id}
-                            onClick={() => setSelection({ kind: "component", id: c.id })}
-                          />
-                        ))}
-                      </div>
-                    </div>
+                  {data.parts.length > 0 && (
+                    <PaletteSection label={`Thành phần của ${parentDef?.title ?? ""}`}>
+                      {data.parts.map(defRow)}
+                    </PaletteSection>
                   )}
-                  {CATEGORIES.map((cat) => {
-                    const nodes = getNodesByCategory(cat).filter(isAllowedDefinition);
-                    if (nodes.length === 0) return null;
-                    const isOpen = !!expanded[cat];
-                    return (
-                      <div key={cat} className="mb-1">
-                        <button
-                          onClick={() => toggleCategory(cat)}
-                          className="w-full flex items-center gap-1.5 text-sm font-medium px-2 py-1.5 hover:bg-muted rounded"
-                        >
-                          {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                          {cat}
-                        </button>
-                        {isOpen && (
-                          <div className="pl-4">
-                            {nodes.map((def) => (
-                              <NodeListRow
-                                key={def.id} title={def.title} iconName={def.icon}
-                                selected={selection?.kind === "definition" && selection.id === def.id}
-                                onClick={() => setSelection({ kind: "definition", id: def.id })}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {!data.sealed && tab === "component" && availableComponents.length > 0 && (
+                    <PaletteSection label="Của dự án" count={availableComponents.length}>
+                      {projectRows(availableComponents)}
+                    </PaletteSection>
+                  )}
+                  {!data.sealed && tab !== "block" &&
+                    groups.map((group, index) => (
+                      <PaletteSection
+                        key={group.key}
+                        label={group.label}
+                        count={group.defs.length}
+                        open={isOpen(group.key, index)}
+                        onToggle={() => toggle(group.key, index)}
+                      >
+                        <div className="pl-2">{group.defs.map(defRow)}</div>
+                      </PaletteSection>
+                    ))}
+                  {data.sealed && data.parts.length === 0 && (
+                    <p className="py-4 text-center text-xs text-muted-foreground">
+                      Node này không nhận thêm con
+                    </p>
+                  )}
                 </>
               )}
             </div>

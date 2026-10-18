@@ -22,6 +22,7 @@ const rawShadcnNodes: RawDef[] = [
     id: "shadcn.card",
     title: "Card",
     category: "Layout",
+    tier: "component",
     tags: ["layout", "container", "panel", "card", "shadcn"],
     canHaveChildren: true,
     defaultProps: {},
@@ -79,7 +80,7 @@ const rawShadcnNodes: RawDef[] = [
   ]},
 
   // ── Feedback ──
-  { id: "shadcn.alert", title: "Alert", category: "Feedback", tags: ["feedback", "alert", "message", "shadcn"], canHaveChildren: false, defaultProps: { title: "Heads up!", description: "Thông báo quan trọng.", variant: "default" }, propsSchema: [
+  { id: "shadcn.alert", title: "Alert", category: "Feedback", tier: "component", tags: ["feedback", "alert", "message", "shadcn"], canHaveChildren: false, defaultProps: { title: "Heads up!", description: "Thông báo quan trọng.", variant: "default" }, propsSchema: [
     { key: "title", label: "Tiêu đề", inputType: "text" },
     { key: "description", label: "Mô tả", inputType: "textarea" },
     { key: "variant", label: "Variant", inputType: "select", options: ["default", "destructive"] },
