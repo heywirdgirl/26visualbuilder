@@ -253,10 +253,13 @@ src
 │   │   ├── components
 │   │   │   ├── add-node-browser.tsx
 │   │   │   ├── node-list-row.tsx
+│   │   │   ├── palette-sections.tsx
 │   │   │   └── quick-add-dropdown.tsx
-│   │   └── constants
-│   │       ├── common-node-ids.ts
-│   │       └── node-icons.ts
+│   │   ├── constants
+│   │   │   ├── common-node-ids.ts
+│   │   │   └── node-icons.ts
+│   │   └── utils
+│   │   │   └── palette-data.ts
 │   ├── node-tree-preview
 │   │   └── components
 │   │       ├── readonly-node-row.tsx
