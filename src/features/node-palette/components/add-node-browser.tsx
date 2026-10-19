@@ -17,13 +17,19 @@ import {
 import { getNodeDefinition } from "@/core/registry/node-registry";
 import { canContain } from "@/core/registry/node-rules";
 import { SYSTEM_NODE_IDS } from "@/core/registry/system-nodes";
+import { countSpecNodes } from "@/core/registry/blocks";
+import type { BlockDefinition } from "@/core/types/block.types";
 import type { NodeDefinition, NodeTier } from "@/core/types/node-definition.types";
+import { getBlockIcon } from "../constants/block-icons";
 import { getNodeIcon } from "../constants/node-icons";
 import { NodeListRow } from "./node-list-row";
 import { buildPaletteData } from "../utils/palette-data";
-import { PaletteSection, PaletteTabs, TIER_BADGE } from "./palette-sections";
+import { BlockCard, PaletteSection, PaletteTabs, TIER_BADGE } from "./palette-sections";
 
-type Selection = { kind: "definition"; id: string } | { kind: "component"; id: string };
+type Selection =
+  | { kind: "definition"; id: string }
+  | { kind: "component"; id: string }
+  | { kind: "block"; id: string };
 
 export function AddNodeBrowser({
   open,
@@ -36,6 +42,7 @@ export function AddNodeBrowser({
 }) {
   const tree = useBuilderStore((s) => s.tree);
   const addNode = useBuilderStore((s) => s.addNode);
+  const addBlock = useBuilderStore((s) => s.addBlock);
   const addComponentInstance = useBuilderStore((s) => s.addComponentInstance);
   const componentList = useComponentList();
   const ancestorComponentId = useAncestorComponentId(parentId);
@@ -87,6 +94,17 @@ export function AddNodeBrowser({
         onClick={() => setSelection({ kind: "component", id: component.id })}
       />
     ));
+  const blockRow = (block: BlockDefinition) => (
+    <BlockCard
+      key={block.id}
+      title={block.title}
+      description={block.description}
+      Icon={getBlockIcon(block.id)}
+      nodeCount={countSpecNodes(block.spec)}
+      selected={selection?.kind === "block" && selection.id === block.id}
+      onClick={() => setSelection({ kind: "block", id: block.id })}
+    />
+  );
 
   const handleClose = () => {
     setQuery("");
@@ -98,6 +116,8 @@ export function AddNodeBrowser({
     if (!parentId || !selection) return;
     if (selection.kind === "definition") {
       addNode(parentId, selection.id);
+    } else if (selection.kind === "block") {
+      addBlock(parentId, selection.id);
     } else {
       if (ancestorComponentId) {
         const reachable = getReachableComponentIds(selection.id, tree);
@@ -140,7 +160,7 @@ export function AddNodeBrowser({
 
             <div className="-mx-2 flex-1 overflow-y-auto px-2">
               {searching ? (
-                filteredComponents.length + data.searchResults.length === 0 ? (
+                filteredComponents.length + data.searchResults.length + data.blockResults.length === 0 ? (
                   <p className="py-4 text-center text-xs text-muted-foreground">
                     Không tìm thấy node nào
                   </p>
@@ -148,6 +168,13 @@ export function AddNodeBrowser({
                   <>
                     {projectRows(filteredComponents)}
                     {data.searchResults.map(defRow)}
+                    {data.blockResults.length > 0 && (
+                      <PaletteSection label="Block" count={data.blockResults.length}>
+                        <div className="flex flex-col gap-1.5">
+                          {data.blockResults.map(blockRow)}
+                        </div>
+                      </PaletteSection>
+                    )}
                   </>
                 )
               ) : (
@@ -162,6 +189,14 @@ export function AddNodeBrowser({
                       {projectRows(availableComponents)}
                     </PaletteSection>
                   )}
+                  {!data.sealed && tab === "block" &&
+                    data.blockGroups.map((group) => (
+                      <PaletteSection key={group.key} label={group.label} count={group.blocks.length}>
+                        <div className="flex flex-col gap-1.5">
+                          {group.blocks.map(blockRow)}
+                        </div>
+                      </PaletteSection>
+                    ))}
                   {!data.sealed && tab !== "block" &&
                     groups.map((group, index) => (
                       <PaletteSection
