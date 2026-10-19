@@ -16,10 +16,13 @@ import {
 import { getNodeDefinition } from "@/core/registry/node-registry";
 import { canContain } from "@/core/registry/node-rules";
 import { SYSTEM_NODE_IDS } from "@/core/registry/system-nodes";
+import { countSpecNodes } from "@/core/registry/blocks";
+import type { BlockDefinition } from "@/core/types/block.types";
 import type { NodeDefinition, NodeTier } from "@/core/types/node-definition.types";
+import { getBlockIcon } from "../constants/block-icons";
 import { getNodeIcon } from "../constants/node-icons";
 import { buildPaletteData } from "../utils/palette-data";
-import { PaletteSection, PaletteTabs, PaletteTile, TIER_BADGE } from "./palette-sections";
+import { BlockCard, PaletteSection, PaletteTabs, PaletteTile, TIER_BADGE } from "./palette-sections";
 
 function slugify(name: string) {
   return name
@@ -42,6 +45,7 @@ export function QuickAddDropdown({
 }) {
   const tree = useBuilderStore((s) => s.tree);
   const addNode = useBuilderStore((s) => s.addNode);
+  const addBlock = useBuilderStore((s) => s.addBlock);
   const addFolder = useBuilderStore((s) => s.addFolder);
   const addPage = useBuilderStore((s) => s.addPage);
   const addComponent = useBuilderStore((s) => s.addComponent);
@@ -79,6 +83,11 @@ export function QuickAddDropdown({
     onClose();
   };
 
+  const handleAddBlock = (blockId: string) => {
+    addBlock(parentId, blockId);
+    onClose();
+  };
+
   const handleAddComponentInstance = (componentId: string) => {
     if (ancestorComponentId) {
       const reachable = getReachableComponentIds(componentId, tree);
@@ -110,6 +119,16 @@ export function QuickAddDropdown({
       Icon={getNodeIcon(def.id)}
       badge={searching ? TIER_BADGE[def.tier ?? "element"] : undefined}
       onClick={() => handleAddDef(def.id)}
+    />
+  );
+  const blockCard = (block: BlockDefinition) => (
+    <BlockCard
+      key={block.id}
+      title={block.title}
+      description={block.description}
+      Icon={getBlockIcon(block.id)}
+      nodeCount={countSpecNodes(block.spec)}
+      onClick={() => handleAddBlock(block.id)}
     />
   );
   const projectTiles = filteredComponents.map((component) => (
@@ -160,13 +179,22 @@ export function QuickAddDropdown({
 
       <div className="flex-1 space-y-2 overflow-y-auto p-2">
         {searching ? (
-          projectTiles.length + data.searchResults.length === 0 ? (
+          projectTiles.length + data.searchResults.length + data.blockResults.length === 0 ? (
             <p className="py-4 text-center text-xs text-muted-foreground">Không tìm thấy node nào</p>
           ) : (
-            <div className="grid grid-cols-4 gap-1">
-              {projectTiles}
-              {data.searchResults.map(defTile)}
-            </div>
+            <>
+              <div className="grid grid-cols-4 gap-1">
+                {projectTiles}
+                {data.searchResults.map(defTile)}
+              </div>
+              {data.blockResults.length > 0 && (
+                <PaletteSection label="Block" count={data.blockResults.length}>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {data.blockResults.map(blockCard)}
+                  </div>
+                </PaletteSection>
+              )}
+            </>
           )
         ) : (
           <>
@@ -181,6 +209,15 @@ export function QuickAddDropdown({
                 <div className="grid grid-cols-4 gap-1">{projectTiles}</div>
               </PaletteSection>
             )}
+
+            {!data.sealed && tab === "block" &&
+              data.blockGroups.map((group) => (
+                <PaletteSection key={group.key} label={group.label} count={group.blocks.length}>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {group.blocks.map(blockCard)}
+                  </div>
+                </PaletteSection>
+              ))}
 
             {!data.sealed && tab !== "block" &&
               groups.map((group, index) => (
