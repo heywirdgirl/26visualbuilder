@@ -6,12 +6,13 @@ import { PageCapture } from "@/core/types/page-capture.types";
 import { StyleProps, Breakpoint } from "@/core/types/style.types";
 import { AiOperation } from "@/core/types/ai-operation.types";
 import { getNodeDefinition } from "@/core/registry/node-registry";
+import { getBlock } from "@/core/registry/blocks";
 import { resolveDefaultStyle } from "@/core/registry/default-presets";
 import { getStylePreset } from "@/core/registry/style-presets";
 import { canContain } from "@/core/registry/node-rules";
 import { SYSTEM_NODE_IDS } from "@/core/registry/system-nodes";
 import { applyAiOperationsToTree, ApplyAiOperationsResult } from "@/core/utils/apply-ai-operations";
-import { buildNodeFromSpec } from "@/core/utils/build-node-tree";
+import { buildNodeFromSpec, buildNodeTree } from "@/core/utils/build-node-tree";
 import { normalizeClusterValues } from "@/core/utils/normalize-cluster-values";
 import { useMemo } from "react";
 import type { User } from "@supabase/supabase-js";
@@ -55,6 +56,7 @@ interface BuilderState {
   setActivePage: (id: string) => void;
 
   addNode: (parentId: string, defId: string) => void;
+  addBlock: (parentId: string, blockId: string) => void;
   addFolder: (parentId: string, name: string) => void;
   addPage: (parentId: string, name: string, slug: string) => void;
   addComponent: (parentId: string, name: string) => void;
@@ -244,6 +246,24 @@ tree: createDefaultProjectTree(),
       const newNode = buildNodeFromSpec(defId);
       if (!newNode) return {};
       parent.children.push(newNode);
+      return { tree: newTree };
+    }),
+
+  addBlock: (parentId, blockId) =>
+    set((state) => {
+      const block = getBlock(blockId);
+      const rootDef = block ? getNodeDefinition(block.spec.defId) : undefined;
+      if (!block || !rootDef) return {};
+
+      const newTree = structuredClone(state.tree);
+      const parent = findNode(newTree, parentId);
+      if (!parent) return {};
+      const parentDef = getNodeDefinition(parent.type);
+      if (!parentDef || !canContain(parentDef, rootDef.nodeKind, rootDef)) return {};
+
+      const node = buildNodeTree(block.spec);
+      if (!node) return {};
+      parent.children.push(node);
       return { tree: newTree };
     }),
 

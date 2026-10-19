@@ -1,23 +1,420 @@
-Đủ rồi, và 4 file này làm lộ ra 2 điều:
+# v6.9: Blocks
 
-- **`globals.css` + `build-zip.ts` xác nhận lỗi mình lo ở v6.7c.** Template xuất ra chỉ có `@import "tailwindcss"`, thiếu toàn bộ theme shadcn và `tw-animate-css`. Project xuất ra sẽ có Button, Card, Tabs không màu, không viền. Mình vá ở cuối bài.
-- **`node-list-row.tsx` giải thích lỗi icon.** Nó tra `LucideIcons[iconName]` theo chuỗi mà `def.icon` không node nào có. Nên trình duyệt đầy đủ không có icon, khác với lưới nhanh. Bản này sửa luôn.
+Bản này không cần xem thêm file nào, và có 4 phần:
 
-# v6.8: Palette 3 tầng
+1. Mở rộng định dạng cây để block gắn được preset và style.
+2. Kho 10 block có bộ kiểm tra tự động.
+3. Action `addBlock` trong store.
+4. Bật tab **Blocks** trong palette.
 
-**Thiết kế:**
-- **Elements | Components | Blocks**: tab Blocks hiện nhưng khóa (làm ở v6.9).
-- **Thành phần của cụm** (Tab, Table Row, Menu Item...): hiện ở khung riêng phía trên, chỉ khi chọn đúng node cha. Khi cha là cụm "kín" như Tabs hay Table, ẩn hẳn 3 tab và chỉ hiện các thành phần hợp lệ.
-- **Gõ tìm kiếm**: tìm xuyên cả tầng, ô kết quả gắn nhãn "Cụm" cho component.
-- **Category thu gọn được**, mặc định chỉ mở mục đầu.
-- Dùng chung một hàm dữ liệu cho cả lưới nhanh lẫn trình duyệt đầy đủ.
+Block được chèn bằng đúng hàm dựng cây của v6.1, mỗi lần chèn cấp ID mới nên luôn là **bản sao độc lập**.
 
-## 1. File mới `features/node-palette/utils/palette-data.ts`
+Mình nói trước một điểm: mình hứa "xem trước từng block" ở kế hoạch, nhưng bản này chỉ hiện **tên, mô tả và số node**. Ảnh xem trước thật cần dựng block bằng renderer của canvas, mà mình chưa thấy `component-renderer.tsx`. Việc này để bản sau.
+
+## 1. Mở rộng `DefaultChildSpec`
+
+**`node-definition.types.ts`**: thay interface `DefaultChildSpec`:
+
+```ts
+export interface DefaultChildSpec {
+  defId: string;
+  props?: Record<string, unknown>;
+  preset?: string;                    // 👈 tên preset trong style-presets.ts
+  style?: Record<string, unknown>;    // 👈 ghi đè lên base của preset
+  children?: DefaultChildSpec[];
+}
+```
+
+**`core/utils/build-node-tree.ts`**: thay toàn bộ:
+
+```ts
+import { TreeNode } from "@/core/types/builder.types";
+import { DefaultChildSpec, NodeDefinition } from "@/core/types/node-definition.types";
+import { NodeStyle, StyleProps } from "@/core/types/style.types";
+import { getNodeDefinition } from "@/core/registry/node-registry";
+import { resolveDefaultStyle } from "@/core/registry/default-presets";
+import { getStylePreset } from "@/core/registry/style-presets";
+
+const MAX_DEPTH = 12; // block có thể sâu 7-8 cấp
+
+function resolveSpecStyle(def: NodeDefinition, preset?: string, override?: Record<string, unknown>): NodeStyle {
+  const presetStyle = getStylePreset(preset)?.style;
+  const style: NodeStyle = presetStyle ? structuredClone(presetStyle) : resolveDefaultStyle(def);
+  if (override) style.base = { ...style.base, ...(structuredClone(override) as Partial<StyleProps>) };
+  return style;
+}
+
+function build(spec: DefaultChildSpec, depth: number): TreeNode | null {
+  if (depth > MAX_DEPTH) return null;
+  const def = getNodeDefinition(spec.defId);
+  if (!def) return null;
+
+  // children có khai báo (kể cả []) thì dùng đúng; không khai báo thì lấy nội dung mẫu của node
+  const childSpecs = spec.children ?? def.defaultChildren ?? [];
+  return {
+    id: crypto.randomUUID(),
+    type: spec.defId,
+    props: { ...structuredClone(def.defaultProps), ...structuredClone(spec.props ?? {}) },
+    style: resolveSpecStyle(def, spec.preset, spec.style),
+    children: childSpecs.map((s) => build(s, depth + 1)).filter((n): n is TreeNode => n !== null),
+  };
+}
+
+// Giữ chữ ký cũ để addNode và apply-ai-operations không phải sửa
+export function buildNodeFromSpec(
+  defId: string,
+  overrideProps?: Record<string, unknown>,
+  childSpecs?: DefaultChildSpec[],
+  depth = 0
+): TreeNode | null {
+  return build({ defId, props: overrideProps, children: childSpecs }, depth);
+}
+
+export function buildNodeTree(spec: DefaultChildSpec): TreeNode | null {
+  return build(spec, 0);
+}
+```
+
+## 2. File mới `core/types/block.types.ts`
+
+```ts
+import { DefaultChildSpec } from "./node-definition.types";
+
+export interface BlockDefinition {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  tags: string[];
+  spec: DefaultChildSpec; // cây JSON thuần: lưu Supabase, chia sẻ, clone đều được
+}
+```
+
+## 3. File mới `core/registry/blocks.ts`
+
+```ts
+import { BlockDefinition } from "@/core/types/block.types";
+import { DefaultChildSpec } from "@/core/types/node-definition.types";
+import { getNodeDefinition } from "./node-registry";
+import { canContain } from "./node-rules";
+import { getStylePreset } from "./style-presets";
+
+type S = Record<string, unknown>;
+
+// ── Helper dựng spec (children luôn khai báo → không lẫn nội dung mẫu của node) ──
+const n = (defId: string, preset?: string, props?: S, children: DefaultChildSpec[] = [], style?: S): DefaultChildSpec =>
+  ({ defId, preset, props, style, children });
+const t = (defId: string, preset: string | undefined, text: string, style?: S) =>
+  n(defId, preset, { text }, [], style);
+const btn = (text: string, variant = "default", preset = "button-soft") =>
+  n("shadcn.button", preset, { text, variant });
+const link = (text: string) => n("html.a", "link", { href: "#" }, [t("html.span", undefined, text)]);
+const icon = (name: string, size = 24, style?: S) => n("html.icon", undefined, { name, size }, [], style);
+const head = (eyebrow: string, title: string, lead: string) =>
+  n("html.div", "stack", undefined, [
+    t("html.span", "eyebrow", eyebrow),
+    t("html.h2", "heading-section", title),
+    t("html.p", "text-lead", lead),
+  ], { align: "items-center", textAlign: "center", gap: 2 });
+
+// ── Thành phần dùng lại ──
+const feature = (ic: string, title: string, desc: string) =>
+  n("shadcn.card", "card", undefined, [
+    icon(ic, 28, { textColor: "blue-500" }),
+    t("html.h3", "heading-card", title),
+    t("html.p", "text-muted", desc),
+  ]);
+
+const tier = (name: string, price: string, note: string, items: string[], featured = false) =>
+  n("shadcn.card", featured ? "card-featured" : "card", undefined, [
+    t("html.h3", "heading-card", name),
+    t("html.p", "price", price),
+    t("html.p", "text-muted", note),
+    n("html.ul", "list", undefined, items.map((i) =>
+      n("html.li", "list-item", undefined, [icon("Check", 16, { textColor: "blue-500" }), t("html.span", undefined, i)])
+    )),
+    btn(featured ? "Chọn gói này" : "Bắt đầu", "default", "button-block"),
+  ]);
+
+const quote = (text: string, name: string, role: string, fallback: string) =>
+  n("shadcn.card", "card", undefined, [
+    t("html.p", "text-body", `“${text}”`),
+    n("html.div", "row", undefined, [
+      n("shadcn.avatar", undefined, { src: "", fallback }),
+      n("html.div", "stack", undefined, [
+        t("html.p", undefined, name, { fontWeight: "semibold", textColor: "zinc-900" }),
+        t("html.p", "text-muted", role),
+      ], { gap: 0 }),
+    ]),
+  ]);
+
+const field = (label: string, placeholder: string, type: string) =>
+  n("html.div", "stack", undefined, [
+    t("shadcn.label", "label", label),
+    n("shadcn.input", undefined, { placeholder, type }),
+  ], { gap: 2 });
+
+const stat = (value: string, label: string) =>
+  n("html.div", "stack", undefined, [
+    t("html.h2", "heading-section", value),
+    t("html.p", "text-muted", label),
+  ], { align: "items-center", textAlign: "center", gap: 1 });
+
+const faqItem = (q: string, a: string) =>
+  n("shadcn.accordion-item", undefined, undefined, [
+    n("shadcn.accordion-trigger", undefined, { text: q }),
+    n("shadcn.accordion-content", undefined, undefined, [t("html.p", "text-body", a)]),
+  ]);
+
+const col = (title: string, items: string[]) =>
+  n("html.div", "stack", undefined, [
+    t("html.p", undefined, title, { fontWeight: "semibold", textColor: "zinc-900" }),
+    n("html.ul", "list", undefined, items.map((i) => n("html.li", "list-item", undefined, [link(i)]))),
+  ], { gap: 3 });
+
+// ══ 10 BLOCK ══
+export const BLOCK_CATEGORY_ORDER = ["Điều hướng", "Mở đầu", "Nội dung", "Biểu mẫu", "Chân trang"];
+
+export const BLOCKS: BlockDefinition[] = [
+  {
+    id: "block.navbar", title: "Navbar", category: "Điều hướng",
+    description: "Thanh điều hướng: logo, 3 liên kết, nút đăng nhập.",
+    tags: ["navbar", "header", "menu", "nav"],
+    spec: n("html.header", "navbar", undefined, [
+      t("html.span", "heading-card", "Brand"),
+      n("html.nav", "row", undefined, [link("Trang chủ"), link("Tính năng"), link("Bảng giá")], { gap: 6 }),
+      btn("Đăng nhập"),
+    ]),
+  },
+  {
+    id: "block.hero", title: "Hero", category: "Mở đầu",
+    description: "Tiêu đề lớn, mô tả và 2 nút hành động ở giữa.",
+    tags: ["hero", "landing", "banner", "headline"],
+    spec: n("html.section", "hero", undefined, [
+      t("html.span", "eyebrow", "Mới ra mắt"),
+      t("html.h1", "heading-hero", "Xây dựng giao diện nhanh hơn bao giờ hết"),
+      t("html.p", "text-lead", "Một câu mô tả ngắn gọn giá trị sản phẩm của bạn, rõ ràng và dễ hiểu."),
+      n("html.div", "row", undefined, [btn("Bắt đầu ngay"), btn("Tìm hiểu thêm", "outline")],
+        { justify: "justify-center", flexWrap: "flex-wrap" }),
+    ]),
+  },
+  {
+    id: "block.features", title: "Tính năng", category: "Nội dung",
+    description: "Tiêu đề mục và lưới 3 thẻ tính năng có icon.",
+    tags: ["features", "grid", "benefits", "cards"],
+    spec: n("html.section", "section", undefined, [
+      head("Tính năng", "Mọi thứ bạn cần", "Những điểm nổi bật giúp sản phẩm khác biệt."),
+      n("html.div", "grid-3", undefined, [
+        feature("Zap", "Nhanh chóng", "Hoạt động mượt mà, tải trang gần như tức thì."),
+        feature("ShieldCheck", "An toàn", "Dữ liệu được bảo vệ ở mọi bước."),
+        feature("Sparkles", "Dễ dùng", "Giao diện trực quan, không cần hướng dẫn."),
+      ]),
+    ]),
+  },
+  {
+    id: "block.pricing", title: "Bảng giá", category: "Nội dung",
+    description: "3 gói giá, gói giữa được làm nổi bật.",
+    tags: ["pricing", "plans", "tiers", "price"],
+    spec: n("html.section", "section", undefined, [
+      head("Bảng giá", "Chọn gói phù hợp", "Nâng cấp hoặc hủy bất cứ lúc nào."),
+      n("html.div", "grid-3", undefined, [
+        tier("Starter", "$9", "Cho cá nhân", ["1 dự án", "Hỗ trợ email"]),
+        tier("Pro", "$19", "Cho nhóm đang lớn", ["10 dự án", "Hỗ trợ ưu tiên", "Phân tích nâng cao"], true),
+        tier("Business", "$49", "Cho doanh nghiệp", ["Không giới hạn dự án", "Quản lý thành viên", "SLA 99.9%"]),
+      ]),
+    ]),
+  },
+  {
+    id: "block.testimonials", title: "Đánh giá", category: "Nội dung",
+    description: "3 thẻ nhận xét khách hàng có ảnh đại diện.",
+    tags: ["testimonials", "reviews", "quotes", "social proof"],
+    spec: n("html.section", "section", undefined, [
+      head("Khách hàng nói gì", "Được tin dùng mỗi ngày", "Phản hồi thật từ những người đã sử dụng."),
+      n("html.div", "grid-3", undefined, [
+        quote("Sản phẩm giúp nhóm mình tiết kiệm rất nhiều thời gian.", "Nguyễn An", "Product Manager", "NA"),
+        quote("Dễ dùng, đẹp và đúng thứ mình cần.", "Trần Bình", "Designer", "TB"),
+        quote("Hỗ trợ nhiệt tình, cập nhật liên tục.", "Lê Chi", "Founder", "LC"),
+      ]),
+    ]),
+  },
+  {
+    id: "block.stats", title: "Số liệu", category: "Nội dung",
+    description: "Hàng 4 con số nổi bật kèm nhãn.",
+    tags: ["stats", "numbers", "metrics", "counter"],
+    spec: n("html.section", "section", undefined, [
+      n("html.div", "grid-4", undefined, [
+        stat("10K+", "Người dùng"), stat("50+", "Quốc gia"), stat("99.9%", "Uptime"), stat("24/7", "Hỗ trợ"),
+      ]),
+    ]),
+  },
+  {
+    id: "block.cta", title: "Kêu gọi hành động", category: "Mở đầu",
+    description: "Khối nền tối với tiêu đề, mô tả và một nút.",
+    tags: ["cta", "call to action", "banner", "signup"],
+    spec: n("html.div", "card-dark", undefined, [
+      t("html.h2", undefined, "Sẵn sàng bắt đầu?", { fontSize: "3xl", fontWeight: "bold", textColor: "white" }),
+      t("html.p", undefined, "Tạo tài khoản miễn phí chỉ trong vài giây.", { textColor: "zinc-300" }),
+      btn("Dùng thử miễn phí", "secondary"),
+    ], { align: "items-center", textAlign: "center", paddingY: 12 }),
+  },
+  {
+    id: "block.faq", title: "Câu hỏi thường gặp", category: "Nội dung",
+    description: "Tiêu đề và danh sách hỏi đáp dạng accordion.",
+    tags: ["faq", "questions", "accordion", "help"],
+    spec: n("html.section", "section", undefined, [
+      head("FAQ", "Câu hỏi thường gặp", "Không thấy câu trả lời bạn cần? Hãy liên hệ chúng tôi."),
+      n("shadcn.accordion", undefined, undefined, [
+        faqItem("Tôi có thể dùng thử miễn phí không?", "Có, bạn được dùng thử đầy đủ tính năng trong 14 ngày."),
+        faqItem("Tôi có thể hủy bất cứ lúc nào?", "Có, hủy trong phần cài đặt tài khoản, không mất phí."),
+        faqItem("Có hỗ trợ xuất hóa đơn không?", "Có, hóa đơn được gửi tự động qua email mỗi kỳ."),
+        faqItem("Dữ liệu của tôi có an toàn không?", "Dữ liệu được mã hóa khi lưu trữ và khi truyền tải."),
+      ]),
+    ]),
+  },
+  {
+    id: "block.login", title: "Form đăng nhập", category: "Biểu mẫu",
+    description: "Thẻ đăng nhập: email, mật khẩu, nút gửi.",
+    tags: ["login", "signin", "form", "auth"],
+    spec: n("shadcn.card", "card", undefined, [
+      t("html.h2", "heading-section", "Đăng nhập"),
+      t("html.p", "text-muted", "Nhập email và mật khẩu để tiếp tục."),
+      field("Email", "email@example.com", "email"),
+      field("Mật khẩu", "••••••••", "password"),
+      btn("Đăng nhập", "default", "button-block"),
+      t("html.p", "text-muted", "Chưa có tài khoản? Đăng ký"),
+    ], { maxWidth: "md" }),
+  },
+  {
+    id: "block.footer", title: "Footer", category: "Chân trang",
+    description: "Chân trang 4 cột, đường kẻ và dòng bản quyền.",
+    tags: ["footer", "links", "bottom", "copyright"],
+    spec: n("html.footer", "footer", undefined, [
+      n("html.div", "grid-4", undefined, [
+        n("html.div", "stack", undefined, [
+          t("html.h3", "heading-card", "Brand"),
+          t("html.p", "text-muted", "Mô tả ngắn về thương hiệu của bạn."),
+        ], { gap: 2 }),
+        col("Sản phẩm", ["Tính năng", "Bảng giá", "Cập nhật"]),
+        col("Công ty", ["Giới thiệu", "Tuyển dụng", "Liên hệ"]),
+        col("Hỗ trợ", ["Trung tâm trợ giúp", "Điều khoản", "Bảo mật"]),
+      ]),
+      n("shadcn.separator"),
+      t("html.p", "text-muted", "© 2026 Brand. Mọi quyền được bảo lưu."),
+    ]),
+  },
+];
+
+export function getBlock(id: string): BlockDefinition | undefined {
+  return BLOCKS.find((b) => b.id === id);
+}
+
+export function searchBlocks(query: string): BlockDefinition[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return BLOCKS;
+  return BLOCKS.filter((b) =>
+    [b.title, b.description, b.category, ...b.tags].some((s) => s.toLowerCase().includes(q))
+  );
+}
+
+export function countSpecNodes(spec: DefaultChildSpec): number {
+  return 1 + (spec.children ?? []).reduce((sum, c) => sum + countSpecNodes(c), 0);
+}
+
+// ── Kiểm tra block lúc dev: bắt lỗi gõ sai id, preset, hoặc đặt sai cha-con ──
+function validate(spec: DefaultChildSpec, parentId: string | undefined, path: string, out: string[]) {
+  const def = getNodeDefinition(spec.defId);
+  if (!def) return void out.push(`${path}: node "${spec.defId}" không tồn tại`);
+  if (spec.preset && !getStylePreset(spec.preset)) out.push(`${path}: preset "${spec.preset}" không tồn tại`);
+  if (!def.canHaveChildren && (spec.children?.length ?? 0) > 0) out.push(`${path}: "${spec.defId}" là node lá nhưng có con`);
+  const parentDef = parentId ? getNodeDefinition(parentId) : undefined;
+  if (parentDef && !canContain(parentDef, def.nodeKind, def)) out.push(`${path}: "${parentId}" không được chứa "${spec.defId}"`);
+  (spec.children ?? []).forEach((c, i) => validate(c, spec.defId, `${path} > ${c.defId}[${i}]`, out));
+}
+
+if (process.env.NODE_ENV !== "production") {
+  const problems: string[] = [];
+  BLOCKS.forEach((b) => validate(b.spec, undefined, b.id, problems));
+  if (problems.length) console.warn("[blocks] Phát hiện lỗi trong định nghĩa block:\n" + problems.join("\n"));
+}
+```
+
+Nếu `maxWidth: "md"` bị `STYLE_PROP_KEYS` hoặc `styleToClasses` bỏ qua (login card dãn full màn hình), kiểm tra danh sách giá trị `maxWidth` trong `style.types.ts` rồi đổi cho khớp (preset `page-container` đang dùng `"6xl"`).
+
+## 4. `builder-store.ts`
+
+Thêm import:
+
+```ts
+import { getBlock } from "@/core/registry/blocks";
+import { buildNodeTree } from "@/core/utils/build-node-tree";
+```
+
+Thêm vào interface `BuilderState`, cạnh `addNode`:
+
+```ts
+  addBlock: (parentId: string, blockId: string) => void;
+```
+
+Thêm action, ngay sau `addNode`:
+
+```ts
+  addBlock: (parentId, blockId) =>
+    set((state) => {
+      const block = getBlock(blockId);
+      const rootDef = block ? getNodeDefinition(block.spec.defId) : undefined;
+      if (!block || !rootDef) return {};
+
+      const newTree = structuredClone(state.tree);
+      const parent = findNode(newTree, parentId);
+      if (!parent) return {};
+      const parentDef = getNodeDefinition(parent.type);
+      if (!parentDef || !canContain(parentDef, rootDef.nodeKind, rootDef)) return {};
+
+      const node = buildNodeTree(block.spec); // ID mới hoàn toàn → bản sao độc lập
+      if (!node) return {};
+      parent.children.push(node);
+      return { tree: newTree }; // giữ nguyên node đang chọn để thêm block tiếp không bị lồng vào nhau
+    }),
+```
+
+FAQ có Accordion nên `normalizeClusterValues` (v6.2) tự gán `item-1, item-2...` sau khi chèn.
+
+## 5. File mới `features/node-palette/constants/block-icons.ts`
+
+```ts
+import {
+  PanelTop, Rocket, LayoutGrid, BadgeDollarSign, MessageSquareQuote,
+  LogIn, Hash, Megaphone, CircleHelp, PanelBottom, Blocks, type LucideIcon,
+} from "lucide-react";
+
+const BLOCK_ICONS: Record<string, LucideIcon> = {
+  "block.navbar": PanelTop,
+  "block.hero": Rocket,
+  "block.features": LayoutGrid,
+  "block.pricing": BadgeDollarSign,
+  "block.testimonials": MessageSquareQuote,
+  "block.stats": Hash,
+  "block.cta": Megaphone,
+  "block.faq": CircleHelp,
+  "block.login": LogIn,
+  "block.footer": PanelBottom,
+};
+
+export function getBlockIcon(id: string): LucideIcon {
+  return BLOCK_ICONS[id] ?? Blocks;
+}
+```
+
+Nếu bản lucide của bạn thiếu `CircleHelp`, dùng `HelpCircle`.
+
+## 6. `palette-data.ts`: thay toàn bộ
 
 ```ts
 import { NodeDefinition, NodeCategory, NodeTier } from "@/core/types/node-definition.types";
+import { BlockDefinition } from "@/core/types/block.types";
 import { searchNodes, getNodeDefinition } from "@/core/registry/node-registry";
 import { canContain } from "@/core/registry/node-rules";
+import { BLOCK_CATEGORY_ORDER, searchBlocks } from "@/core/registry/blocks";
 import { commonNodeIds } from "../constants/common-node-ids";
 
 export const CATEGORY_ORDER: NodeCategory[] = [
@@ -25,19 +422,18 @@ export const CATEGORY_ORDER: NodeCategory[] = [
   "Navigation", "Overlay", "Data Display", "Feedback", "Templates",
 ];
 
-export interface PaletteGroup {
-  key: string;
-  label: string;
-  defs: NodeDefinition[];
-}
+export interface PaletteGroup { key: string; label: string; defs: NodeDefinition[] }
+export interface BlockGroup { key: string; label: string; blocks: BlockDefinition[] }
 
 export interface PaletteData {
-  sealed: boolean;               // cha chỉ nhận đúng loại con (Tabs, Table...) → ẩn 3 tab
-  parts: NodeDefinition[];       // thành phần của cụm cha (có parentOnly)
+  sealed: boolean;
+  parts: NodeDefinition[];
   searchResults: NodeDefinition[];
   element: PaletteGroup[];
   component: PaletteGroup[];
-  counts: { element: number; component: number };
+  blockResults: BlockDefinition[];
+  blockGroups: BlockGroup[];
+  counts: { element: number; component: number; block: number };
 }
 
 export function buildPaletteData(parentDef: NodeDefinition | undefined, query: string): PaletteData {
@@ -54,14 +450,12 @@ export function buildPaletteData(parentDef: NodeDefinition | undefined, query: s
 
   const build = (tier: NodeTier): PaletteGroup[] => {
     const groups: PaletteGroup[] = [];
-
     if (!q) {
       const common = commonNodeIds
         .map((id) => getNodeDefinition(id))
         .filter((d): d is NodeDefinition => !!d && allowed(d) && !d.parentOnly && tierOf(d) === tier);
       if (common.length) groups.push({ key: "__common", label: "Hay dùng", defs: common });
     }
-
     const byCat = new Map<string, NodeDefinition[]>();
     for (const d of normal.filter((x) => tierOf(x) === tier)) {
       if (!byCat.has(d.category)) byCat.set(d.category, []);
@@ -75,112 +469,89 @@ export function buildPaletteData(parentDef: NodeDefinition | undefined, query: s
     return groups;
   };
 
+  // Block chỉ hiện nếu node gốc của block được phép nằm trong cha đang chọn
+  const blockResults = searchBlocks(q).filter((b) => {
+    const rootDef = getNodeDefinition(b.spec.defId);
+    return !!parentDef && !!rootDef && canContain(parentDef, rootDef.nodeKind, rootDef);
+  });
+  const blockGroups = BLOCK_CATEGORY_ORDER
+    .map((c) => ({ key: c, label: c, blocks: blockResults.filter((b) => b.category === c) }))
+    .filter((g) => g.blocks.length > 0);
+
   return {
     sealed: !!parentDef?.allowedChildIds,
     parts,
     searchResults: defs,
     element: build("element"),
     component: build("component"),
+    blockResults,
+    blockGroups,
     counts: {
       element: normal.filter((d) => tierOf(d) === "element").length,
       component: normal.filter((d) => tierOf(d) === "component").length,
+      block: blockResults.length,
     },
   };
 }
 ```
 
-## 2. `common-node-ids.ts`: thêm cụm hay dùng
+## 7. `palette-sections.tsx`
 
-Danh sách này giờ được lọc theo tầng, nên có thể trộn cả hai loại:
-
-```ts
-export const commonNodeIds: string[] = [
-  "html.div", "html.section", "html.header", "html.footer",
-  "html.h1", "html.h2", "html.p", "html.span",
-  "html.a", "html.nav", "html.ul", "html.li",
-  "html.img", "html.icon", "html.hr",
-  "shadcn.button", "shadcn.input", "shadcn.textarea",
-  "shadcn.label", "shadcn.checkbox", "shadcn.switch", "shadcn.select",
-  "shadcn.badge", "shadcn.avatar", "shadcn.separator",
-  // Components
-  "shadcn.card", "shadcn.tabs", "shadcn.accordion", "shadcn.table",
-  "shadcn.dialog", "shadcn.dropdown-menu", "shadcn.carousel", "shadcn.alert",
-  "html.form",
-];
-```
-
-## 3. File mới `features/node-palette/components/palette-sections.tsx`
+**Thêm import** `import { cn } ...` đã có. Thêm component `BlockCard` (đặt dưới `PaletteTile`):
 
 ```tsx
-"use client";
-
-import type { ReactNode } from "react";
-import { ChevronDown, ChevronRight, type LucideIcon } from "lucide-react";
-import { cn } from "@/core/utils/cn";
-import { NodeTier } from "@/core/types/node-definition.types";
-
-export const TIER_BADGE: Partial<Record<NodeTier, string>> = { component: "Cụm", block: "Block" };
-
-export function PaletteTile({
-  title, Icon, badge, onClick,
-}: { title: string; Icon: LucideIcon; badge?: string; onClick: () => void }) {
+export function BlockCard({
+  title, description, Icon, nodeCount, selected, onClick,
+}: {
+  title: string; description: string; Icon: LucideIcon;
+  nodeCount: number; selected?: boolean; onClick: () => void;
+}) {
   return (
     <button
-      type="button" title={title} onClick={onClick}
-      className="relative flex h-14 flex-col items-center justify-center gap-1 rounded-md border bg-background px-1 hover:bg-accent active:bg-accent"
+      type="button" onClick={onClick}
+      className={cn(
+        "flex flex-col items-start gap-1 rounded-md border bg-background p-2 text-left hover:bg-accent active:bg-accent",
+        selected && "border-primary bg-primary/10"
+      )}
     >
-      {badge && <span className="absolute right-1 top-0.5 text-[8px] font-medium text-primary">{badge}</span>}
-      <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-      <span className="w-full truncate text-center text-[10px] leading-tight">{title}</span>
+      <div className="flex w-full items-center gap-1.5">
+        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <span className="truncate text-xs font-medium">{title}</span>
+        <span className="ml-auto shrink-0 text-[9px] text-muted-foreground">{nodeCount} node</span>
+      </div>
+      <p className="line-clamp-2 text-[10px] leading-snug text-muted-foreground">{description}</p>
     </button>
   );
 }
+```
 
-export function PaletteSection({
-  label, count, open = true, onToggle, children,
-}: { label: string; count?: number; open?: boolean; onToggle?: () => void; children: ReactNode }) {
-  return (
-    <section>
-      <button
-        type="button" onClick={onToggle} disabled={!onToggle}
-        className={cn(
-          "flex w-full items-center gap-1 px-1 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground",
-          onToggle && "hover:text-foreground"
-        )}
-      >
-        {onToggle && (open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />)}
-        {label}
-        {count !== undefined && <span className="ml-auto font-normal">{count}</span>}
-      </button>
-      {open && children}
-    </section>
-  );
-}
+**Sửa `PaletteTabs`:** bỏ khóa Blocks, đếm đủ 3 tầng:
 
-const TABS: { id: NodeTier; label: string; disabled?: boolean }[] = [
+```tsx
+const TABS: { id: NodeTier; label: string }[] = [
   { id: "element", label: "Elements" },
   { id: "component", label: "Components" },
-  { id: "block", label: "Blocks", disabled: true }, // mở ở v6.9
+  { id: "block", label: "Blocks" },
 ];
 
 export function PaletteTabs({
   value, onChange, counts,
-}: { value: NodeTier; onChange: (t: NodeTier) => void; counts: { element: number; component: number } }) {
+}: {
+  value: NodeTier; onChange: (t: NodeTier) => void;
+  counts: { element: number; component: number; block: number };
+}) {
   return (
     <div className="flex gap-1 border-b px-2 py-1.5">
       {TABS.map((t) => (
         <button
-          key={t.id} type="button" disabled={t.disabled}
-          title={t.disabled ? "Sắp có" : undefined}
-          onClick={() => onChange(t.id)}
+          key={t.id} type="button" onClick={() => onChange(t.id)}
           className={cn(
             "flex-1 rounded-md px-2 py-1 text-xs",
-            value === t.id ? "bg-primary text-primary-foreground" : "hover:bg-muted",
-            t.disabled && "cursor-not-allowed opacity-40 hover:bg-transparent"
+            value === t.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"
           )}
         >
           {t.label}
-          {t.id !== "block" && <span className="ml-1 opacity-60">{counts[t.id]}</span>}
+          <span className="ml-1 opacity-60">{counts[t.id]}</span>
         </button>
       ))}
     </div>
@@ -188,86 +559,77 @@ export function PaletteTabs({
 }
 ```
 
-## 4. `quick-add-dropdown.tsx`
+## 8. `quick-add-dropdown.tsx`: 5 chỗ
 
-**Import:** xóa `searchNodes`, `canContain`, `commonNodeIds`, `LucideIcon`, và hàm `NodeTile` cũ. Thêm:
+**a) Import thêm:**
 
 ```tsx
-import { Box } from "lucide-react";                       // gộp vào import lucide hiện có
-import { NodeDefinition, NodeTier } from "@/core/types/node-definition.types";
-import { getNodeIcon } from "../constants/node-icons";
-import { buildPaletteData } from "../utils/palette-data";
-import { PaletteTile, PaletteSection, PaletteTabs, TIER_BADGE } from "./palette-sections";
+import { BlockCard } from "./palette-sections";   // gộp vào import palette-sections hiện có
+import { getBlockIcon } from "../constants/block-icons";
+import { countSpecNodes } from "@/core/registry/blocks";
+import { BlockDefinition } from "@/core/types/block.types";
 ```
 
-**Xóa** `filteredDefs` và `groupedDefs` (cả bản cũ lẫn bản vá ở v6.2). Ngay **sau** dòng tính `parentDef` và `isFolderMode`, thêm:
+**b) Cạnh các `useBuilderStore` khác:**
 
 ```tsx
-  const searching = query.trim().length > 0;
-  const data = useMemo(() => buildPaletteData(parentDef, query), [parentDef, query]);
-  const [tab, setTab] = useState<NodeTier>("element");
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const addBlock = useBuilderStore((s) => s.addBlock);
 ```
 
-**Thay toàn bộ `return` cuối** (phần Page/Component mode; nhánh Folder giữ nguyên):
+**c) Cạnh `handleAddDef`:**
 
 ```tsx
-  const groups = tab === "component" ? data.component : data.element;
-  const isOpen = (key: string, i: number) => expanded[`${tab}:${key}`] ?? i === 0;
-  const toggle = (key: string, i: number) =>
-    setExpanded((p) => ({ ...p, [`${tab}:${key}`]: !isOpen(key, i) }));
+  const handleAddBlock = (blockId: string) => {
+    addBlock(parentId, blockId);
+    onClose();
+  };
+```
 
-  const defTile = (def: NodeDefinition) => (
-    <PaletteTile
-      key={def.id} title={def.title} Icon={getNodeIcon(def.id)}
-      badge={searching ? TIER_BADGE[def.tier ?? "element"] : undefined}
-      onClick={() => handleAddDef(def.id)}
+**d) Cạnh `defTile` trong phần render:**
+
+```tsx
+  const blockCard = (b: BlockDefinition) => (
+    <BlockCard
+      key={b.id} title={b.title} description={b.description}
+      Icon={getBlockIcon(b.id)} nodeCount={countSpecNodes(b.spec)}
+      onClick={() => handleAddBlock(b.id)}
     />
   );
-  const projectTiles = filteredComponents.map((c) => (
-    <PaletteTile key={c.id} title={c.name} Icon={Box} onClick={() => handleAddComponentInstance(c.id)} />
-  ));
-  const showTabs = !searching && !data.sealed;
+```
 
-  return (
-    <div className="flex max-h-[70vh] w-full flex-col">
-      <div className="border-b p-2">
-        <div className="relative">
-          <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            autoFocus value={query} onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search node..." className="h-8 pl-7 text-sm"
-          />
-        </div>
-      </div>
+**e) Thay nhánh `searching`** (khối `{searching ? ( ... ) : ( ... )}`: phần đầu tiên, trước dấu `:`):
 
-      {showTabs && <PaletteTabs value={tab} onChange={setTab} counts={data.counts} />}
-
-      <div className="flex-1 space-y-2 overflow-y-auto p-2">
+```tsx
         {searching ? (
-          projectTiles.length + data.searchResults.length === 0 ? (
+          projectTiles.length + data.searchResults.length + data.blockResults.length === 0 ? (
             <p className="py-4 text-center text-xs text-muted-foreground">Không tìm thấy node nào</p>
           ) : (
-            <div className="grid grid-cols-4 gap-1">
-              {projectTiles}
-              {data.searchResults.map(defTile)}
-            </div>
+            <>
+              <div className="grid grid-cols-4 gap-1">
+                {projectTiles}
+                {data.searchResults.map(defTile)}
+              </div>
+              {data.blockResults.length > 0 && (
+                <PaletteSection label="Block" count={data.blockResults.length}>
+                  <div className="grid grid-cols-2 gap-1.5">{data.blockResults.map(blockCard)}</div>
+                </PaletteSection>
+              )}
+            </>
           )
         ) : (
-          <>
-            {data.parts.length > 0 && (
-              <PaletteSection label={`Thành phần của ${parentDef?.title ?? ""}`}>
-                <div className="grid grid-cols-4 gap-1">{data.parts.map(defTile)}</div>
-              </PaletteSection>
-            )}
+```
 
-            {!data.sealed && tab === "component" && projectTiles.length > 0 && (
-              <PaletteSection label="Của dự án" count={projectTiles.length}>
-                <div className="grid grid-cols-4 gap-1">{projectTiles}</div>
-              </PaletteSection>
-            )}
+**f) Thay biểu thức** `{!data.sealed && tab === "block" ? null : !data.sealed && groups.map(...)}` bằng:
 
-            {!data.sealed && tab === "block" ? null : !data.sealed &&
+```tsx
+            {!data.sealed && tab === "block" &&
+              data.blockGroups.map((g) => (
+                <PaletteSection key={g.key} label={g.label} count={g.blocks.length}>
+                  <div className="grid grid-cols-2 gap-1.5">{g.blocks.map(blockCard)}</div>
+                </PaletteSection>
+              ))}
+
+            {!data.sealed && tab !== "block" &&
               groups.map((g, i) => (
                 <PaletteSection
                   key={g.key} label={g.label} count={g.defs.length}
@@ -276,146 +638,84 @@ import { PaletteTile, PaletteSection, PaletteTabs, TIER_BADGE } from "./palette-
                   <div className="grid grid-cols-4 gap-1">{g.defs.map(defTile)}</div>
                 </PaletteSection>
               ))}
-
-            {data.sealed && data.parts.length === 0 && (
-              <p className="py-4 text-center text-xs text-muted-foreground">Node này không nhận thêm con</p>
-            )}
-          </>
-        )}
-      </div>
-
-      <div className="border-t p-2">
-        <Button variant="ghost" size="sm" className="w-full text-xs" onClick={onOpenBrowser}>
-          Duyệt tất cả theo danh mục...
-        </Button>
-      </div>
-    </div>
-  );
 ```
 
-## 5. `node-list-row.tsx`: thay toàn bộ
+## 9. `add-node-browser.tsx`: 4 chỗ
+
+**a) Import thêm:**
 
 ```tsx
-"use client";
-
-import type { ComponentType } from "react";
-import * as LucideIcons from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-import { cn } from "@/core/utils/cn";
-
-export function NodeListRow({
-  title, Icon, iconName, badge, selected, onClick,
-}: {
-  title: string;
-  Icon?: LucideIcon;
-  iconName?: string; // giữ để tương thích chỗ gọi cũ
-  badge?: string;
-  selected?: boolean;
-  onClick: () => void;
-}) {
-  const IconComp =
-    Icon ??
-    (iconName ? (LucideIcons as unknown as Record<string, ComponentType<any>>)[iconName] : undefined);
-
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted",
-        selected && "bg-primary/10 text-primary"
-      )}
-    >
-      {IconComp ? <IconComp className="h-3.5 w-3.5 shrink-0" /> : <span className="w-3.5 shrink-0" />}
-      <span className="truncate">{title}</span>
-      {badge && <span className="ml-auto text-[10px] text-muted-foreground">{badge}</span>}
-    </button>
-  );
-}
+import { BlockCard } from "./palette-sections";   // gộp vào import palette-sections hiện có
+import { getBlockIcon } from "../constants/block-icons";
+import { countSpecNodes } from "@/core/registry/blocks";
+import { BlockDefinition } from "@/core/types/block.types";
 ```
 
-## 6. `add-node-browser.tsx`
-
-**Xóa:** hằng `CATEGORIES`, `getNodesByCategory`, `searchNodes`, `NodeCategory`, `isAllowedDefinition`, `filteredFlat`, state `expanded`, `toggleCategory`, và các import `ChevronDown`, `ChevronRight`, `canContain` nếu không còn dùng. `canAddComponentInstance` vẫn dùng `canContain`, nên **giữ import đó**.
-
-**Thêm import:**
+**b) Mở rộng `Selection` và thêm `addBlock`:**
 
 ```tsx
-import { useMemo, useState } from "react";
-import { Box } from "lucide-react"; // gộp import lucide
-import { NodeDefinition, NodeTier } from "@/core/types/node-definition.types";
-import { getNodeIcon } from "../constants/node-icons";
-import { buildPaletteData } from "../utils/palette-data";
-import { PaletteSection, PaletteTabs, TIER_BADGE } from "./palette-sections";
+type Selection =
+  | { kind: "definition"; id: string }
+  | { kind: "component"; id: string }
+  | { kind: "block"; id: string };
 ```
 
-**Thêm state**, ngay sau `isFolderMode`:
+```tsx
+  const addBlock = useBuilderStore((s) => s.addBlock);
+```
+
+**c) Sửa `handleAdd`:**
 
 ```tsx
-  const searching = query.trim().length > 0;
-  const data = useMemo(() => buildPaletteData(parentDef, query), [parentDef, query]);
-  const [tab, setTab] = useState<NodeTier>("element");
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const groups = tab === "component" ? data.component : data.element;
-  const isOpen = (key: string, i: number) => expanded[`${tab}:${key}`] ?? i === 0;
-  const toggle = (key: string, i: number) =>
-    setExpanded((p) => ({ ...p, [`${tab}:${key}`]: !isOpen(key, i) }));
+    if (selection.kind === "definition") {
+      addNode(parentId, selection.id);
+    } else if (selection.kind === "block") {
+      addBlock(parentId, selection.id);
+    } else {
+      // ...nhánh component giữ nguyên
+    }
+```
 
-  const defRow = (def: NodeDefinition) => (
-    <NodeListRow
-      key={def.id} title={def.title} Icon={getNodeIcon(def.id)}
-      badge={searching ? TIER_BADGE[def.tier ?? "element"] : undefined}
-      selected={selection?.kind === "definition" && selection.id === def.id}
-      onClick={() => setSelection({ kind: "definition", id: def.id })}
+**d) Thêm `blockRow` cạnh `defRow`, rồi sửa 2 chỗ render:**
+
+```tsx
+  const blockRow = (b: BlockDefinition) => (
+    <BlockCard
+      key={b.id} title={b.title} description={b.description}
+      Icon={getBlockIcon(b.id)} nodeCount={countSpecNodes(b.spec)}
+      selected={selection?.kind === "block" && selection.id === b.id}
+      onClick={() => setSelection({ kind: "block", id: b.id })}
     />
   );
-  const projectRows = (list: { id: string; name: string }[]) =>
-    list.map((c) => (
-      <NodeListRow
-        key={c.id} title={c.name} Icon={Box}
-        selected={selection?.kind === "component" && selection.id === c.id}
-        onClick={() => setSelection({ kind: "component", id: c.id })}
-      />
-    ));
 ```
 
-**Thay toàn bộ khối** `<> <div className="relative">...` (nhánh `else` của `isFolderMode`, từ ô search đến hết `<div className="flex-1 overflow-y-auto ...">`) bằng:
+Trong nhánh `searching`, thêm điều kiện và render block:
 
 ```tsx
-          <>
-            <div className="relative">
-              <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                autoFocus value={query} onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search node..." className="pl-7"
-              />
-            </div>
-
-            {!searching && !data.sealed && (
-              <div className="-mx-2"><PaletteTabs value={tab} onChange={setTab} counts={data.counts} /></div>
-            )}
-
-            <div className="-mx-2 flex-1 overflow-y-auto px-2">
-              {searching ? (
-                filteredComponents.length + data.searchResults.length === 0 ? (
+                filteredComponents.length + data.searchResults.length + data.blockResults.length === 0 ? (
                   <p className="py-4 text-center text-xs text-muted-foreground">Không tìm thấy node nào</p>
                 ) : (
                   <>
                     {projectRows(filteredComponents)}
                     {data.searchResults.map(defRow)}
+                    {data.blockResults.length > 0 && (
+                      <PaletteSection label="Block" count={data.blockResults.length}>
+                        <div className="flex flex-col gap-1.5">{data.blockResults.map(blockRow)}</div>
+                      </PaletteSection>
+                    )}
                   </>
                 )
-              ) : (
-                <>
-                  {data.parts.length > 0 && (
-                    <PaletteSection label={`Thành phần của ${parentDef?.title ?? ""}`}>
-                      {data.parts.map(defRow)}
-                    </PaletteSection>
-                  )}
-                  {!data.sealed && tab === "component" && availableComponents.length > 0 && (
-                    <PaletteSection label="Của dự án" count={availableComponents.length}>
-                      {projectRows(availableComponents)}
-                    </PaletteSection>
-                  )}
+```
+
+Và thay dòng `{!data.sealed && tab !== "block" && groups.map(...)}` bằng:
+
+```tsx
+                  {!data.sealed && tab === "block" &&
+                    data.blockGroups.map((g) => (
+                      <PaletteSection key={g.key} label={g.label} count={g.blocks.length}>
+                        <div className="flex flex-col gap-1.5">{g.blocks.map(blockRow)}</div>
+                      </PaletteSection>
+                    ))}
                   {!data.sealed && tab !== "block" &&
                     groups.map((g, i) => (
                       <PaletteSection
@@ -425,158 +725,33 @@ import { PaletteSection, PaletteTabs, TIER_BADGE } from "./palette-sections";
                         <div className="pl-2">{g.defs.map(defRow)}</div>
                       </PaletteSection>
                     ))}
-                </>
-              )}
-            </div>
-          </>
 ```
 
-## 7. Vá export (bổ sung v6.7c): theme và dependency
+## Kiểm tra sau v6.9
 
-**`project-template-files.ts`**, thêm 2 dòng vào `BASE_DEPENDENCIES`:
+1. Mở console khi chạy `pnpm dev`: **không có** dòng `[blocks] Phát hiện lỗi...`. Nếu có, nó chỉ đúng block và đường dẫn node bị sai.
+2. Chọn **Page**, bấm `+`, tab **Blocks**: 3 nhóm (Điều hướng, Mở đầu, Nội dung...) hiện 2 cột, mỗi thẻ có icon, số node và mô tả.
+3. Chèn **Navbar**, **Hero**, **Bảng giá**, **Footer** lần lượt: trang ra đúng bố cục, 3 gói giá thành lưới, gói giữa có viền xanh.
+4. Chèn **FAQ**: bấm mở/đóng từng câu hỏi được, thêm một `Accordion Item` thì có câu thứ 5.
+5. Chèn **Hero** hai lần rồi sửa chữ ở bản đầu: bản thứ hai **không đổi theo**. Đó là bản sao độc lập.
+6. Chọn **Tabs** rồi bấm `+`: không có tab Blocks, vì Tabs không nhận block.
+7. Chọn `Div` rồi chèn **Login**: thẻ nằm gọn trong Div.
+8. Gõ "pricing" vào ô tìm: ra block Bảng giá kèm nhãn nhóm "Block".
+9. Mở **Code**: mỗi block xuất ra JSX hợp lệ, có đủ `import` Accordion, Avatar, Card, Button...
+10. **Lưu rồi mở lại project**: block vẫn đủ (block chỉ là node thường trong cây).
 
-```ts
-  shadcn: "^4.12.0",            // globals.css import "shadcn/tailwind.css"
-  "tw-animate-css": "^1.4.0",
-```
+## Hạn chế cần biết
 
-Thay hằng `GLOBALS_CSS` bằng:
+- **AI chưa biết Block.** Gõ "thêm trang chủ" thì AI vẫn tự ghép từng node. Cho AI gọi block được thì cần thêm danh sách block vào prompt và một loại thao tác mới, đáng làm riêng.
+- **Block hardcode:** 10 block do bạn kiểm soát, đúng như bạn chốt. Muốn thêm block mới chỉ cần thêm một mục vào mảng `BLOCKS`, bộ kiểm tra dev sẽ bắt lỗi ngay.
+- **Khoảng cách và font** dựa trên preset hiện có. Nếu muốn khác thì sửa `style-presets.ts`, mọi block đổi theo.
 
-```ts
-const GLOBALS_CSS = `@import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
+## Tổng kết v6
 
-@custom-variant dark (&:is(.dark *));
+Bạn đã có đủ 3 tầng:
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
-}
-
-:root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-}
-
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
-}
-
-html, body {
-  height: 100%;
-  margin: 0;
-}
-`;
-```
-
-Bản này bỏ các biến font Geist (project xuất ra không tải font đó) và phần sidebar dark. Nếu sau này có node Sidebar thì thêm lại.
-
-## Kiểm tra sau v6.8
-
-1. Chọn **Page**, bấm `+`: 3 tab. **Elements** mở sẵn mục "Hay dùng", các mục khác thu gọn. **Components** hiện Card, Tabs, Table, Dialog... Tab **Blocks** mờ, không bấm được.
-2. Chọn **Tabs**: không còn 3 tab, chỉ có khung "Thành phần của Tabs" với Tabs List và Tab Content.
-3. Chọn **Table Row**: chỉ hiện Table Head và Table Cell.
-4. Chọn **Fieldset** (HTML): khung thành phần có Legend, bên dưới vẫn còn 3 tab Elements/Components cho phần tử tự do.
-5. Gõ "table": ra cả `Table`, `Table (HTML)` kèm nhãn "Cụm", không còn tab.
-6. Bấm "Duyệt tất cả theo danh mục...": cũng 3 tab, **dòng nào cũng có icon** (trước đây trống).
-7. Export project có Button, Card, Accordion: giải nén, `pnpm install && pnpm dev`, nút có màu, Card có viền, Accordion có hiệu ứng mở.
-
-## Lưu ý
-
-- Hai đoạn JSX ở mục 4 và 6 dài và lồng nhau. Nếu build báo thiếu thẻ đóng, nhiều khả năng do ghép sót dấu `)` hoặc `</>`, gửi mình file đang lỗi.
-- Component "của dự án" (do người dùng tạo) giờ chỉ hiện ở tab **Components** và dưới mục "Của dự án". Trước đây nó nằm đầu danh sách chung, nên bạn có thể thấy khác.
-
-Bạn chạy thử và báo kết quả. Bản cuối là **v6.9: Blocks**. Mình không cần xem thêm file nào, vì các thứ cần dùng (`buildNodeFromSpec`, tab Blocks, `parentDef`) đã có từ các bản trước. Mình sẽ làm: định dạng Block bằng JSON cây, 10 block hardcode (Navbar, Hero, Feature Grid, Pricing, Testimonial, Login Form, Stat Row, CTA, FAQ, Footer), chèn thành bản sao độc lập, và bật tab Blocks với ô xem trước cho từng block.
+| Tầng | Số lượng |
+|---|---|
+| Elements | khoảng 60+ node lẻ |
+| Components | khoảng 30 cụm có nội dung mẫu |
+| Blocks | 10 block ghép sẵn |

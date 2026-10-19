@@ -41,6 +41,8 @@ export type NodeTier = "element" | "component" | "block";
 export interface DefaultChildSpec {
   defId: string;
   props?: Record<string, unknown>;
+  preset?: string;
+  style?: Record<string, unknown>;
   children?: DefaultChildSpec[];
 }
 

@@ -37,6 +37,40 @@ export function PaletteTile({
   );
 }
 
+export function BlockCard({
+  title,
+  description,
+  Icon,
+  nodeCount,
+  selected,
+  onClick,
+}: {
+  title: string;
+  description: string;
+  Icon: LucideIcon;
+  nodeCount: number;
+  selected?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex flex-col items-start gap-1 rounded-md border bg-background p-2 text-left hover:bg-accent active:bg-accent",
+        selected && "border-primary bg-primary/10"
+      )}
+    >
+      <div className="flex w-full items-center gap-1.5">
+        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <span className="truncate text-xs font-medium">{title}</span>
+        <span className="ml-auto shrink-0 text-[9px] text-muted-foreground">{nodeCount} node</span>
+      </div>
+      <p className="line-clamp-2 text-[10px] leading-snug text-muted-foreground">{description}</p>
+    </button>
+  );
+}
+
 export function PaletteSection({
   label,
   count,
@@ -75,7 +109,7 @@ export function PaletteSection({
 const TABS: { id: NodeTier; label: string; disabled?: boolean }[] = [
   { id: "element", label: "Elements" },
   { id: "component", label: "Components" },
-  { id: "block", label: "Blocks", disabled: true },
+  { id: "block", label: "Blocks" },
 ];
 
 export function PaletteTabs({
@@ -85,7 +119,7 @@ export function PaletteTabs({
 }: {
   value: NodeTier;
   onChange: (tier: NodeTier) => void;
-  counts: { element: number; component: number };
+  counts: { element: number; component: number; block: number };
 }) {
   return (
     <div className="flex gap-1 border-b px-2 py-1.5">
@@ -103,7 +137,7 @@ export function PaletteTabs({
           )}
         >
           {tab.label}
-          {tab.id !== "block" && <span className="ml-1 opacity-60">{counts[tab.id]}</span>}
+          <span className="ml-1 opacity-60">{counts[tab.id]}</span>
         </button>
       ))}
     </div>

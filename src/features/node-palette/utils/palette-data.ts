@@ -1,6 +1,8 @@
 import type { NodeCategory, NodeDefinition, NodeTier } from "@/core/types/node-definition.types";
+import type { BlockDefinition } from "@/core/types/block.types";
 import { getNodeDefinition, searchNodes } from "@/core/registry/node-registry";
 import { canContain } from "@/core/registry/node-rules";
+import { BLOCK_CATEGORY_ORDER, searchBlocks } from "@/core/registry/blocks";
 import { commonNodeIds } from "../constants/common-node-ids";
 
 export const CATEGORY_ORDER: NodeCategory[] = [
@@ -22,13 +24,21 @@ export interface PaletteGroup {
   defs: NodeDefinition[];
 }
 
+export interface BlockGroup {
+  key: string;
+  label: string;
+  blocks: BlockDefinition[];
+}
+
 export interface PaletteData {
   sealed: boolean;
   parts: NodeDefinition[];
   searchResults: NodeDefinition[];
   element: PaletteGroup[];
   component: PaletteGroup[];
-  counts: { element: number; component: number };
+  blockResults: BlockDefinition[];
+  blockGroups: BlockGroup[];
+  counts: { element: number; component: number; block: number };
 }
 
 export function buildPaletteData(
@@ -79,15 +89,30 @@ export function buildPaletteData(
     return groups;
   };
 
+  const blockResults = searchBlocks(q).filter((block) => {
+    const rootDef = getNodeDefinition(block.spec.defId);
+    return !!parentDef && !!rootDef && canContain(parentDef, rootDef.nodeKind, rootDef);
+  });
+  const blockGroups = BLOCK_CATEGORY_ORDER
+    .map((category) => ({
+      key: category,
+      label: category,
+      blocks: blockResults.filter((block) => block.category === category),
+    }))
+    .filter((group) => group.blocks.length > 0);
+
   return {
     sealed: !!parentDef?.allowedChildIds,
     parts,
     searchResults: defs,
     element: build("element"),
     component: build("component"),
+    blockResults,
+    blockGroups,
     counts: {
       element: normal.filter((def) => tierOf(def) === "element").length,
       component: normal.filter((def) => tierOf(def) === "component").length,
+      block: blockResults.length,
     },
   };
 }

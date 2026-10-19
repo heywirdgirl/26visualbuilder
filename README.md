@@ -91,6 +91,7 @@ src
 │   │   └── env.ts
 │   ├── registry
 │   │   ├── ai-registry-summary.ts
+│   │   ├── blocks.ts
 │   │   ├── color-palette.ts
 │   │   ├── default-presets.ts
 │   │   ├── html-extra-nodes.ts
@@ -98,9 +99,9 @@ src
 │   │   ├── node-registry.ts
 │   │   ├── node-rules.ts
 │   │   ├── shadcn-cluster-nodes.ts
-│   │       ├── shadcn-extra-nodes-b.ts
-│   │       ├── shadcn-extra-nodes.ts
-│   │       ├── shadcn-nodes.ts
+│   │   ├── shadcn-extra-nodes-b.ts
+│   │   ├── shadcn-extra-nodes.ts
+│   │   ├── shadcn-nodes.ts
 │   │   ├── style-presets.ts
 │   │   ├── system-nodes.ts
 │   │   └── ui-dependencies.ts
@@ -112,6 +113,7 @@ src
 │   │   └── server.ts
 │   ├── types
 │   │   ├── ai-operation.types.ts
+│   │   ├── block.types.ts
 │   │   ├── builder.types.ts
 │   │   ├── generated-file.types.ts
 │   │   ├── node-definition.types.ts
@@ -256,10 +258,11 @@ src
 │   │   │   ├── palette-sections.tsx
 │   │   │   └── quick-add-dropdown.tsx
 │   │   ├── constants
+│   │   │   ├── block-icons.ts
 │   │   │   ├── common-node-ids.ts
 │   │   │   └── node-icons.ts
 │   │   └── utils
-│   │   │   └── palette-data.ts
+│   │       └── palette-data.ts
 │   ├── node-tree-preview
 │   │   └── components
 │   │       ├── readonly-node-row.tsx
