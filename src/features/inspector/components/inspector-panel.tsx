@@ -36,12 +36,12 @@ export function InspectorPanel() {
   const isInstance = def?.nodeKind === "component-instance";
 
   return (
-    <div className="fixed top-4 right-4 w-72 bg-white border rounded-lg shadow-lg p-4 flex flex-col gap-4 z-[6000] max-h-[80vh] overflow-y-auto">
-      <div className="flex items-center justify-between">
+    <div className="fixed top-4 right-4 w-72 bg-white/50 border rounded-lg shadow-lg flex flex-col z-[6000] max-h-[80vh] ">
+      <div className="sticky top-0 bg-white  px-4 py-3 flex items-center justify-between border-b border-zinc-100">
         <span className="text-sm font-medium">{def?.title ?? activeNode.type}</span>
         <button onClick={() => setActiveNode(null)} className="text-muted-foreground hover:text-foreground">✕</button>
       </div>
-
+      <div className="p-4 flex flex-col gap-4 bg-white/30 overflow-y-auto backdrop-blur-[2px]">
       {isInstance ? (
         <p className="text-xs text-muted-foreground">
           Component Instance không sửa trực tiếp — chọn đúng Component gốc trong Components/ để sửa.
@@ -65,6 +65,7 @@ export function InspectorPanel() {
           <ExtrasSection node={activeNode} />
         </>
       )}
+      </div>
     </div>
   );
 }
