@@ -1,3 +1,5 @@
+// src/core/utils/style-to-classes.ts
+
 import { NodeStyle, STYLE_LAYER_KEYS, StyleProps } from "@/core/types/style.types";
 
 const HEX_COLOR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
