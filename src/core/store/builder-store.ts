@@ -14,6 +14,7 @@ import { SYSTEM_NODE_IDS } from "@/core/registry/system-nodes";
 import { applyAiOperationsToTree, ApplyAiOperationsResult } from "@/core/utils/apply-ai-operations";
 import { buildNodeFromSpec, buildNodeTree } from "@/core/utils/build-node-tree";
 import { normalizeClusterValues } from "@/core/utils/normalize-cluster-values";
+import { ActiveState, StyleLayer } from "@/core/utils/style-cascade";
 import { useMemo } from "react";
 import type { User } from "@supabase/supabase-js";
 // ID cố định cho 2 folder gốc + trang Home mặc định — Phase 3/4/5 dùng lại để
@@ -42,6 +43,7 @@ interface BuilderState {
   previewContainerEl: HTMLElement | null;
   setPreviewContainerEl: (el: HTMLElement | null) => void;
   activeBreakpoint: Breakpoint;
+  activeState: ActiveState;
   user: User | null;
   authLoading: boolean;
   currentProjectId: string | null;
@@ -50,6 +52,9 @@ interface BuilderState {
   setUser: (user: User | null) => void;
   setAuthLoading: (loading: boolean) => void;
   setActiveBreakpoint: (bp: Breakpoint) => void;
+  setActiveState: (state: ActiveState) => void;
+  updateNodeStyleLayer: (id: string, layer: StyleLayer, patch: Partial<StyleProps>) => void;
+  clearNodeStyleLayerOverride: (id: string, layer: StyleLayer, key: keyof StyleProps) => void;
   clearNodeStyleOverride: (id: string, breakpoint: Breakpoint, key: keyof StyleProps) => void;
 
   setActiveNode: (id: string | null) => void;
@@ -213,6 +218,7 @@ tree: createDefaultProjectTree(),
   menuHidden: false,
   editMode: false,
   activeBreakpoint: "base",
+  activeState: "normal",
   highlightReferenceId: null,
   previewContainerEl: null,
   user: null,
@@ -453,6 +459,30 @@ tree: createDefaultProjectTree(),
       return { tree: newTree };
     }),
 
+  updateNodeStyleLayer: (id, layer, patch) =>
+    set((state) => {
+      const newTree = structuredClone(state.tree);
+      const node = findNode(newTree, id);
+      if (!node) return {};
+      if (layer === "base") {
+        node.style.base = { ...node.style.base, ...patch };
+      } else {
+        node.style[layer] = { ...(node.style[layer] ?? {}), ...patch };
+      }
+      return { tree: newTree };
+    }),
+
+  clearNodeStyleLayerOverride: (id, layer, key) =>
+    set((state) => {
+      if (layer === "base") return {};
+      const newTree = structuredClone(state.tree);
+      const node = findNode(newTree, id);
+      const override = node?.style[layer];
+      if (!node || !override) return {};
+      delete override[key];
+      return { tree: newTree };
+    }),
+
   applyStylePreset: (id, presetName) =>
     set((state) => {
       const newTree = structuredClone(state.tree);
@@ -472,6 +502,7 @@ tree: createDefaultProjectTree(),
     }),
   
   setActiveBreakpoint: (bp) => set({ activeBreakpoint: bp }),
+  setActiveState: (activeState) => set({ activeState }),
 
   clearNodeStyleOverride: (id, breakpoint, key) =>
     set((state) => {

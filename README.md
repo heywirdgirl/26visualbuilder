@@ -220,6 +220,9 @@ src
 │   │   └── hooks
 │   │       └── use-recent-projects.ts
 │   ├── inspector
+│   │   ├── constants
+│   │   │   ├── inspector-groups.ts
+│   │   │   └── style-field-schema.ts
 │   │   ├── components
 │   │   │   ├── appearance-section.tsx
 │   │   │   ├── breakpoint-switcher.tsx
@@ -232,6 +235,7 @@ src
 │   │   │   ├── layout-section.tsx
 │   │   │   ├── position-section.tsx
 │   │   │   ├── preset-section.tsx
+│   │   │   ├── schema-field.tsx
 │   │   │   ├── section-shell.tsx
 │   │   │   ├── self-layout-section.tsx
 │   │   │   ├── sizing-section.tsx
