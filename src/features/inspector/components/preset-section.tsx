@@ -1,3 +1,5 @@
+// src/features/inspector/components/preset-section.tsx
+
 "use client";
 
 import { useState } from "react";

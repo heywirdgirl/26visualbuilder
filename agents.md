@@ -1,757 +1,1018 @@
-# v6.9: Blocks
+Dưới đây là code v7, chia thành 4 bước. Bước 1-2 là logic thuần, có thể kiểm thử độc lập. Bước 3-4 là UI.
 
-Bản này không cần xem thêm file nào, và có 4 phần:
+## Tổng quan file
 
-1. Mở rộng định dạng cây để block gắn được preset và style.
-2. Kho 10 block có bộ kiểm tra tự động.
-3. Action `addBlock` trong store.
-4. Bật tab **Blocks** trong palette.
+| File | Thao tác |
+|---|---|
+| `core/utils/style-cascade.ts` | Sửa (mở rộng, tương thích ngược) |
+| `core/store/builder-store.ts` | Sửa (thêm `activeState`, 2 action) |
+| `features/inspector/constants/style-field-schema.ts` | Mới |
+| `features/inspector/constants/inspector-groups.ts` | Mới (thay `GROUPS` trong `preset-section.tsx`) |
+| `features/inspector/hooks/use-style-field.ts` | Sửa (giữ nguyên API cũ) |
+| `features/inspector/components/schema-field.tsx` | Mới |
+| `features/inspector/components/preset-section.tsx` | Sửa |
+| `features/inspector/components/inspector-panel.tsx` | Sửa (viết lại) |
 
-Block được chèn bằng đúng hàm dựng cây của v6.1, mỗi lần chèn cấp ID mới nên luôn là **bản sao độc lập**.
+`style-controls.tsx` và `style-field.tsx` giữ nguyên để các section cũ vẫn chạy.
 
-Mình nói trước một điểm: mình hứa "xem trước từng block" ở kế hoạch, nhưng bản này chỉ hiện **tên, mô tả và số node**. Ảnh xem trước thật cần dựng block bằng renderer của canvas, mà mình chưa thấy `component-renderer.tsx`. Việc này để bản sau.
+---
 
-## 1. Mở rộng `DefaultChildSpec`
-
-**`node-definition.types.ts`**: thay interface `DefaultChildSpec`:
+## 1. `core/utils/style-cascade.ts`
 
 ```ts
-export interface DefaultChildSpec {
-  defId: string;
-  props?: Record<string, unknown>;
-  preset?: string;                    // 👈 tên preset trong style-presets.ts
-  style?: Record<string, unknown>;    // 👈 ghi đè lên base của preset
-  children?: DefaultChildSpec[];
+// core/utils/style-cascade.ts
+
+import {
+  NodeStyle,
+  StyleProps,
+  Breakpoint,
+  StateVariant,
+  STYLE_LAYER_KEYS,
+} from "@/core/types/style.types";
+
+// "normal" = đang chỉnh theo breakpoint; hover/focus/active = đang chỉnh state layer.
+export type ActiveState = "normal" | StateVariant;
+
+// Mọi layer có thể đang được chỉnh trong Inspector.
+export type StyleLayer = Breakpoint | StateVariant;
+
+// Khi state = normal thì layer là breakpoint; khi có state thì layer là chính state đó.
+export function resolveLayer(breakpoint: Breakpoint, state: ActiveState): StyleLayer {
+  return state === "normal" ? breakpoint : state;
+}
+
+// Giá trị "đang thấy" tại 1 layer, cascade giống CSS thật:
+// lg kế thừa md, md kế thừa base; state layer (hover...) kế thừa base.
+// Chỉ dùng để HIỂN THỊ — không ảnh hưởng data lưu hay class xuất ra.
+export function getEffectiveStyleValue<K extends keyof StyleProps>(
+  style: NodeStyle,
+  layer: StyleLayer,
+  key: K
+): StyleProps[K] {
+  switch (layer) {
+    case "lg":
+      return style.lg?.[key] ?? style.md?.[key] ?? style.base[key];
+    case "md":
+      return style.md?.[key] ?? style.base[key];
+    case "base":
+      return style.base[key];
+    default:
+      return style[layer]?.[key] ?? style.base[key];
+  }
+}
+
+// Field có bị override RIÊNG tại layer đang xem không (dùng cho nút reset).
+// base luôn coi là không override.
+export function hasOverrideAt<K extends keyof StyleProps>(
+  style: NodeStyle,
+  layer: StyleLayer,
+  key: K
+): boolean {
+  if (layer === "base") return false;
+  return style[layer]?.[key] !== undefined;
+}
+
+// Field đã được đặt ở BẤT KỲ layer nào (base, md, lg, hover, focus, active).
+// Dùng `!== undefined` để không mất 0 (padding: 0, flexGrow: 0).
+export function hasAnyValue(style: NodeStyle, key: keyof StyleProps): boolean {
+  return STYLE_LAYER_KEYS.some((layer) => style[layer]?.[key] !== undefined);
+}
+
+export function anyKeyHasValue(style: NodeStyle, keys: readonly (keyof StyleProps)[]): boolean {
+  return keys.some((key) => hasAnyValue(style, key));
 }
 ```
 
-**`core/utils/build-node-tree.ts`**: thay toàn bộ:
+---
 
-```ts
-import { TreeNode } from "@/core/types/builder.types";
-import { DefaultChildSpec, NodeDefinition } from "@/core/types/node-definition.types";
-import { NodeStyle, StyleProps } from "@/core/types/style.types";
-import { getNodeDefinition } from "@/core/registry/node-registry";
-import { resolveDefaultStyle } from "@/core/registry/default-presets";
-import { getStylePreset } from "@/core/registry/style-presets";
-
-const MAX_DEPTH = 12; // block có thể sâu 7-8 cấp
-
-function resolveSpecStyle(def: NodeDefinition, preset?: string, override?: Record<string, unknown>): NodeStyle {
-  const presetStyle = getStylePreset(preset)?.style;
-  const style: NodeStyle = presetStyle ? structuredClone(presetStyle) : resolveDefaultStyle(def);
-  if (override) style.base = { ...style.base, ...(structuredClone(override) as Partial<StyleProps>) };
-  return style;
-}
-
-function build(spec: DefaultChildSpec, depth: number): TreeNode | null {
-  if (depth > MAX_DEPTH) return null;
-  const def = getNodeDefinition(spec.defId);
-  if (!def) return null;
-
-  // children có khai báo (kể cả []) thì dùng đúng; không khai báo thì lấy nội dung mẫu của node
-  const childSpecs = spec.children ?? def.defaultChildren ?? [];
-  return {
-    id: crypto.randomUUID(),
-    type: spec.defId,
-    props: { ...structuredClone(def.defaultProps), ...structuredClone(spec.props ?? {}) },
-    style: resolveSpecStyle(def, spec.preset, spec.style),
-    children: childSpecs.map((s) => build(s, depth + 1)).filter((n): n is TreeNode => n !== null),
-  };
-}
-
-// Giữ chữ ký cũ để addNode và apply-ai-operations không phải sửa
-export function buildNodeFromSpec(
-  defId: string,
-  overrideProps?: Record<string, unknown>,
-  childSpecs?: DefaultChildSpec[],
-  depth = 0
-): TreeNode | null {
-  return build({ defId, props: overrideProps, children: childSpecs }, depth);
-}
-
-export function buildNodeTree(spec: DefaultChildSpec): TreeNode | null {
-  return build(spec, 0);
-}
-```
-
-## 2. File mới `core/types/block.types.ts`
-
-```ts
-import { DefaultChildSpec } from "./node-definition.types";
-
-export interface BlockDefinition {
-  id: string;
-  title: string;
-  description: string;
-  category: string;
-  tags: string[];
-  spec: DefaultChildSpec; // cây JSON thuần: lưu Supabase, chia sẻ, clone đều được
-}
-```
-
-## 3. File mới `core/registry/blocks.ts`
-
-```ts
-import { BlockDefinition } from "@/core/types/block.types";
-import { DefaultChildSpec } from "@/core/types/node-definition.types";
-import { getNodeDefinition } from "./node-registry";
-import { canContain } from "./node-rules";
-import { getStylePreset } from "./style-presets";
-
-type S = Record<string, unknown>;
-
-// ── Helper dựng spec (children luôn khai báo → không lẫn nội dung mẫu của node) ──
-const n = (defId: string, preset?: string, props?: S, children: DefaultChildSpec[] = [], style?: S): DefaultChildSpec =>
-  ({ defId, preset, props, style, children });
-const t = (defId: string, preset: string | undefined, text: string, style?: S) =>
-  n(defId, preset, { text }, [], style);
-const btn = (text: string, variant = "default", preset = "button-soft") =>
-  n("shadcn.button", preset, { text, variant });
-const link = (text: string) => n("html.a", "link", { href: "#" }, [t("html.span", undefined, text)]);
-const icon = (name: string, size = 24, style?: S) => n("html.icon", undefined, { name, size }, [], style);
-const head = (eyebrow: string, title: string, lead: string) =>
-  n("html.div", "stack", undefined, [
-    t("html.span", "eyebrow", eyebrow),
-    t("html.h2", "heading-section", title),
-    t("html.p", "text-lead", lead),
-  ], { align: "items-center", textAlign: "center", gap: 2 });
-
-// ── Thành phần dùng lại ──
-const feature = (ic: string, title: string, desc: string) =>
-  n("shadcn.card", "card", undefined, [
-    icon(ic, 28, { textColor: "blue-500" }),
-    t("html.h3", "heading-card", title),
-    t("html.p", "text-muted", desc),
-  ]);
-
-const tier = (name: string, price: string, note: string, items: string[], featured = false) =>
-  n("shadcn.card", featured ? "card-featured" : "card", undefined, [
-    t("html.h3", "heading-card", name),
-    t("html.p", "price", price),
-    t("html.p", "text-muted", note),
-    n("html.ul", "list", undefined, items.map((i) =>
-      n("html.li", "list-item", undefined, [icon("Check", 16, { textColor: "blue-500" }), t("html.span", undefined, i)])
-    )),
-    btn(featured ? "Chọn gói này" : "Bắt đầu", "default", "button-block"),
-  ]);
-
-const quote = (text: string, name: string, role: string, fallback: string) =>
-  n("shadcn.card", "card", undefined, [
-    t("html.p", "text-body", `“${text}”`),
-    n("html.div", "row", undefined, [
-      n("shadcn.avatar", undefined, { src: "", fallback }),
-      n("html.div", "stack", undefined, [
-        t("html.p", undefined, name, { fontWeight: "semibold", textColor: "zinc-900" }),
-        t("html.p", "text-muted", role),
-      ], { gap: 0 }),
-    ]),
-  ]);
-
-const field = (label: string, placeholder: string, type: string) =>
-  n("html.div", "stack", undefined, [
-    t("shadcn.label", "label", label),
-    n("shadcn.input", undefined, { placeholder, type }),
-  ], { gap: 2 });
-
-const stat = (value: string, label: string) =>
-  n("html.div", "stack", undefined, [
-    t("html.h2", "heading-section", value),
-    t("html.p", "text-muted", label),
-  ], { align: "items-center", textAlign: "center", gap: 1 });
-
-const faqItem = (q: string, a: string) =>
-  n("shadcn.accordion-item", undefined, undefined, [
-    n("shadcn.accordion-trigger", undefined, { text: q }),
-    n("shadcn.accordion-content", undefined, undefined, [t("html.p", "text-body", a)]),
-  ]);
-
-const col = (title: string, items: string[]) =>
-  n("html.div", "stack", undefined, [
-    t("html.p", undefined, title, { fontWeight: "semibold", textColor: "zinc-900" }),
-    n("html.ul", "list", undefined, items.map((i) => n("html.li", "list-item", undefined, [link(i)]))),
-  ], { gap: 3 });
-
-// ══ 10 BLOCK ══
-export const BLOCK_CATEGORY_ORDER = ["Điều hướng", "Mở đầu", "Nội dung", "Biểu mẫu", "Chân trang"];
-
-export const BLOCKS: BlockDefinition[] = [
-  {
-    id: "block.navbar", title: "Navbar", category: "Điều hướng",
-    description: "Thanh điều hướng: logo, 3 liên kết, nút đăng nhập.",
-    tags: ["navbar", "header", "menu", "nav"],
-    spec: n("html.header", "navbar", undefined, [
-      t("html.span", "heading-card", "Brand"),
-      n("html.nav", "row", undefined, [link("Trang chủ"), link("Tính năng"), link("Bảng giá")], { gap: 6 }),
-      btn("Đăng nhập"),
-    ]),
-  },
-  {
-    id: "block.hero", title: "Hero", category: "Mở đầu",
-    description: "Tiêu đề lớn, mô tả và 2 nút hành động ở giữa.",
-    tags: ["hero", "landing", "banner", "headline"],
-    spec: n("html.section", "hero", undefined, [
-      t("html.span", "eyebrow", "Mới ra mắt"),
-      t("html.h1", "heading-hero", "Xây dựng giao diện nhanh hơn bao giờ hết"),
-      t("html.p", "text-lead", "Một câu mô tả ngắn gọn giá trị sản phẩm của bạn, rõ ràng và dễ hiểu."),
-      n("html.div", "row", undefined, [btn("Bắt đầu ngay"), btn("Tìm hiểu thêm", "outline")],
-        { justify: "justify-center", flexWrap: "flex-wrap" }),
-    ]),
-  },
-  {
-    id: "block.features", title: "Tính năng", category: "Nội dung",
-    description: "Tiêu đề mục và lưới 3 thẻ tính năng có icon.",
-    tags: ["features", "grid", "benefits", "cards"],
-    spec: n("html.section", "section", undefined, [
-      head("Tính năng", "Mọi thứ bạn cần", "Những điểm nổi bật giúp sản phẩm khác biệt."),
-      n("html.div", "grid-3", undefined, [
-        feature("Zap", "Nhanh chóng", "Hoạt động mượt mà, tải trang gần như tức thì."),
-        feature("ShieldCheck", "An toàn", "Dữ liệu được bảo vệ ở mọi bước."),
-        feature("Sparkles", "Dễ dùng", "Giao diện trực quan, không cần hướng dẫn."),
-      ]),
-    ]),
-  },
-  {
-    id: "block.pricing", title: "Bảng giá", category: "Nội dung",
-    description: "3 gói giá, gói giữa được làm nổi bật.",
-    tags: ["pricing", "plans", "tiers", "price"],
-    spec: n("html.section", "section", undefined, [
-      head("Bảng giá", "Chọn gói phù hợp", "Nâng cấp hoặc hủy bất cứ lúc nào."),
-      n("html.div", "grid-3", undefined, [
-        tier("Starter", "$9", "Cho cá nhân", ["1 dự án", "Hỗ trợ email"]),
-        tier("Pro", "$19", "Cho nhóm đang lớn", ["10 dự án", "Hỗ trợ ưu tiên", "Phân tích nâng cao"], true),
-        tier("Business", "$49", "Cho doanh nghiệp", ["Không giới hạn dự án", "Quản lý thành viên", "SLA 99.9%"]),
-      ]),
-    ]),
-  },
-  {
-    id: "block.testimonials", title: "Đánh giá", category: "Nội dung",
-    description: "3 thẻ nhận xét khách hàng có ảnh đại diện.",
-    tags: ["testimonials", "reviews", "quotes", "social proof"],
-    spec: n("html.section", "section", undefined, [
-      head("Khách hàng nói gì", "Được tin dùng mỗi ngày", "Phản hồi thật từ những người đã sử dụng."),
-      n("html.div", "grid-3", undefined, [
-        quote("Sản phẩm giúp nhóm mình tiết kiệm rất nhiều thời gian.", "Nguyễn An", "Product Manager", "NA"),
-        quote("Dễ dùng, đẹp và đúng thứ mình cần.", "Trần Bình", "Designer", "TB"),
-        quote("Hỗ trợ nhiệt tình, cập nhật liên tục.", "Lê Chi", "Founder", "LC"),
-      ]),
-    ]),
-  },
-  {
-    id: "block.stats", title: "Số liệu", category: "Nội dung",
-    description: "Hàng 4 con số nổi bật kèm nhãn.",
-    tags: ["stats", "numbers", "metrics", "counter"],
-    spec: n("html.section", "section", undefined, [
-      n("html.div", "grid-4", undefined, [
-        stat("10K+", "Người dùng"), stat("50+", "Quốc gia"), stat("99.9%", "Uptime"), stat("24/7", "Hỗ trợ"),
-      ]),
-    ]),
-  },
-  {
-    id: "block.cta", title: "Kêu gọi hành động", category: "Mở đầu",
-    description: "Khối nền tối với tiêu đề, mô tả và một nút.",
-    tags: ["cta", "call to action", "banner", "signup"],
-    spec: n("html.div", "card-dark", undefined, [
-      t("html.h2", undefined, "Sẵn sàng bắt đầu?", { fontSize: "3xl", fontWeight: "bold", textColor: "white" }),
-      t("html.p", undefined, "Tạo tài khoản miễn phí chỉ trong vài giây.", { textColor: "zinc-300" }),
-      btn("Dùng thử miễn phí", "secondary"),
-    ], { align: "items-center", textAlign: "center", paddingY: 12 }),
-  },
-  {
-    id: "block.faq", title: "Câu hỏi thường gặp", category: "Nội dung",
-    description: "Tiêu đề và danh sách hỏi đáp dạng accordion.",
-    tags: ["faq", "questions", "accordion", "help"],
-    spec: n("html.section", "section", undefined, [
-      head("FAQ", "Câu hỏi thường gặp", "Không thấy câu trả lời bạn cần? Hãy liên hệ chúng tôi."),
-      n("shadcn.accordion", undefined, undefined, [
-        faqItem("Tôi có thể dùng thử miễn phí không?", "Có, bạn được dùng thử đầy đủ tính năng trong 14 ngày."),
-        faqItem("Tôi có thể hủy bất cứ lúc nào?", "Có, hủy trong phần cài đặt tài khoản, không mất phí."),
-        faqItem("Có hỗ trợ xuất hóa đơn không?", "Có, hóa đơn được gửi tự động qua email mỗi kỳ."),
-        faqItem("Dữ liệu của tôi có an toàn không?", "Dữ liệu được mã hóa khi lưu trữ và khi truyền tải."),
-      ]),
-    ]),
-  },
-  {
-    id: "block.login", title: "Form đăng nhập", category: "Biểu mẫu",
-    description: "Thẻ đăng nhập: email, mật khẩu, nút gửi.",
-    tags: ["login", "signin", "form", "auth"],
-    spec: n("shadcn.card", "card", undefined, [
-      t("html.h2", "heading-section", "Đăng nhập"),
-      t("html.p", "text-muted", "Nhập email và mật khẩu để tiếp tục."),
-      field("Email", "email@example.com", "email"),
-      field("Mật khẩu", "••••••••", "password"),
-      btn("Đăng nhập", "default", "button-block"),
-      t("html.p", "text-muted", "Chưa có tài khoản? Đăng ký"),
-    ], { maxWidth: "md" }),
-  },
-  {
-    id: "block.footer", title: "Footer", category: "Chân trang",
-    description: "Chân trang 4 cột, đường kẻ và dòng bản quyền.",
-    tags: ["footer", "links", "bottom", "copyright"],
-    spec: n("html.footer", "footer", undefined, [
-      n("html.div", "grid-4", undefined, [
-        n("html.div", "stack", undefined, [
-          t("html.h3", "heading-card", "Brand"),
-          t("html.p", "text-muted", "Mô tả ngắn về thương hiệu của bạn."),
-        ], { gap: 2 }),
-        col("Sản phẩm", ["Tính năng", "Bảng giá", "Cập nhật"]),
-        col("Công ty", ["Giới thiệu", "Tuyển dụng", "Liên hệ"]),
-        col("Hỗ trợ", ["Trung tâm trợ giúp", "Điều khoản", "Bảo mật"]),
-      ]),
-      n("shadcn.separator"),
-      t("html.p", "text-muted", "© 2026 Brand. Mọi quyền được bảo lưu."),
-    ]),
-  },
-];
-
-export function getBlock(id: string): BlockDefinition | undefined {
-  return BLOCKS.find((b) => b.id === id);
-}
-
-export function searchBlocks(query: string): BlockDefinition[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return BLOCKS;
-  return BLOCKS.filter((b) =>
-    [b.title, b.description, b.category, ...b.tags].some((s) => s.toLowerCase().includes(q))
-  );
-}
-
-export function countSpecNodes(spec: DefaultChildSpec): number {
-  return 1 + (spec.children ?? []).reduce((sum, c) => sum + countSpecNodes(c), 0);
-}
-
-// ── Kiểm tra block lúc dev: bắt lỗi gõ sai id, preset, hoặc đặt sai cha-con ──
-function validate(spec: DefaultChildSpec, parentId: string | undefined, path: string, out: string[]) {
-  const def = getNodeDefinition(spec.defId);
-  if (!def) return void out.push(`${path}: node "${spec.defId}" không tồn tại`);
-  if (spec.preset && !getStylePreset(spec.preset)) out.push(`${path}: preset "${spec.preset}" không tồn tại`);
-  if (!def.canHaveChildren && (spec.children?.length ?? 0) > 0) out.push(`${path}: "${spec.defId}" là node lá nhưng có con`);
-  const parentDef = parentId ? getNodeDefinition(parentId) : undefined;
-  if (parentDef && !canContain(parentDef, def.nodeKind, def)) out.push(`${path}: "${parentId}" không được chứa "${spec.defId}"`);
-  (spec.children ?? []).forEach((c, i) => validate(c, spec.defId, `${path} > ${c.defId}[${i}]`, out));
-}
-
-if (process.env.NODE_ENV !== "production") {
-  const problems: string[] = [];
-  BLOCKS.forEach((b) => validate(b.spec, undefined, b.id, problems));
-  if (problems.length) console.warn("[blocks] Phát hiện lỗi trong định nghĩa block:\n" + problems.join("\n"));
-}
-```
-
-Nếu `maxWidth: "md"` bị `STYLE_PROP_KEYS` hoặc `styleToClasses` bỏ qua (login card dãn full màn hình), kiểm tra danh sách giá trị `maxWidth` trong `style.types.ts` rồi đổi cho khớp (preset `page-container` đang dùng `"6xl"`).
-
-## 4. `builder-store.ts`
+## 2. `core/store/builder-store.ts` (chỉ các phần thay đổi)
 
 Thêm import:
 
 ```ts
-import { getBlock } from "@/core/registry/blocks";
-import { buildNodeTree } from "@/core/utils/build-node-tree";
+import { ActiveState, StyleLayer } from "@/core/utils/style-cascade";
 ```
 
-Thêm vào interface `BuilderState`, cạnh `addNode`:
+Thêm vào `interface BuilderState`:
 
 ```ts
-  addBlock: (parentId: string, blockId: string) => void;
+  activeState: ActiveState;
+  setActiveState: (state: ActiveState) => void;
+  updateNodeStyleLayer: (id: string, layer: StyleLayer, patch: Partial<StyleProps>) => void;
+  clearNodeStyleLayerOverride: (id: string, layer: StyleLayer, key: keyof StyleProps) => void;
 ```
 
-Thêm action, ngay sau `addNode`:
+Thêm vào initial state (cạnh `activeBreakpoint: "base",`):
 
 ```ts
-  addBlock: (parentId, blockId) =>
+  activeState: "normal",
+```
+
+Thêm các action (đặt cạnh `updateNodeStyle`; `updateNodeStyle` và `clearNodeStyleOverride` cũ giữ nguyên):
+
+```ts
+  setActiveState: (activeState) => set({ activeState }),
+
+  updateNodeStyleLayer: (id, layer, patch) =>
     set((state) => {
-      const block = getBlock(blockId);
-      const rootDef = block ? getNodeDefinition(block.spec.defId) : undefined;
-      if (!block || !rootDef) return {};
-
       const newTree = structuredClone(state.tree);
-      const parent = findNode(newTree, parentId);
-      if (!parent) return {};
-      const parentDef = getNodeDefinition(parent.type);
-      if (!parentDef || !canContain(parentDef, rootDef.nodeKind, rootDef)) return {};
-
-      const node = buildNodeTree(block.spec); // ID mới hoàn toàn → bản sao độc lập
+      const node = findNode(newTree, id);
       if (!node) return {};
-      parent.children.push(node);
-      return { tree: newTree }; // giữ nguyên node đang chọn để thêm block tiếp không bị lồng vào nhau
+      if (layer === "base") {
+        node.style.base = { ...node.style.base, ...patch };
+      } else {
+        node.style[layer] = { ...(node.style[layer] ?? {}), ...patch };
+      }
+      return { tree: newTree };
+    }),
+
+  clearNodeStyleLayerOverride: (id, layer, key) =>
+    set((state) => {
+      if (layer === "base") return {};
+      const newTree = structuredClone(state.tree);
+      const node = findNode(newTree, id);
+      const override = node?.style[layer];
+      if (!node || !override) return {};
+      delete override[key];
+      return { tree: newTree };
     }),
 ```
 
-FAQ có Accordion nên `normalizeClusterValues` (v6.2) tự gán `item-1, item-2...` sau khi chèn.
+---
 
-## 5. File mới `features/node-palette/constants/block-icons.ts`
+## 3. `features/inspector/constants/style-field-schema.ts` (mới)
 
 ```ts
-import {
-  PanelTop, Rocket, LayoutGrid, BadgeDollarSign, MessageSquareQuote,
-  LogIn, Hash, Megaphone, CircleHelp, PanelBottom, Blocks, type LucideIcon,
-} from "lucide-react";
+// features/inspector/constants/style-field-schema.ts
 
-const BLOCK_ICONS: Record<string, LucideIcon> = {
-  "block.navbar": PanelTop,
-  "block.hero": Rocket,
-  "block.features": LayoutGrid,
-  "block.pricing": BadgeDollarSign,
-  "block.testimonials": MessageSquareQuote,
-  "block.stats": Hash,
-  "block.cta": Megaphone,
-  "block.faq": CircleHelp,
-  "block.login": LogIn,
-  "block.footer": PanelBottom,
+import type { NodeDefinition } from "@/core/types/node-definition.types";
+import type { StyleProps, OpacityStep } from "@/core/types/style.types";
+
+// Loại node dưới góc nhìn Inspector (khác canHaveChildren/category thô).
+export type NodeKind = "container" | "text" | "button" | "field" | "media" | "leaf";
+
+export type EnumOption = { value: string | number; label: string };
+
+// Mỗi field khai báo control của nó: Inspector không tự quyết định.
+export type FieldControl =
+  | { kind: "enum"; options: EnumOption[] }
+  | { kind: "int"; min: number; max: number }
+  | { kind: "size"; keywords: string[] }
+  | { kind: "color" };
+
+export interface StyleFieldSpec {
+  key: keyof StyleProps;
+  label: string;
+  control: FieldControl;
+  // undefined = áp dụng cho mọi loại node
+  appliesTo?: NodeKind[];
+}
+
+// Ngoại lệ theo defId — node có canHaveChildren/category không khớp đúng nghĩa.
+const KIND_OVERRIDE: Record<string, NodeKind> = {
+  "html.a": "text",
+  "shadcn.badge": "button",
+  "shadcn.avatar": "media",
 };
 
-export function getBlockIcon(id: string): LucideIcon {
-  return BLOCK_ICONS[id] ?? Blocks;
+export function getNodeKind(def?: NodeDefinition): NodeKind {
+  if (!def) return "leaf";
+  const override = KIND_OVERRIDE[def.id];
+  if (override) return override;
+  if (def.canHaveChildren) return "container";
+  if (def.category === "Typography") return "text";
+  if (def.category === "Media") return "media";
+  if (def.category === "Form") return def.tags.includes("action") ? "button" : "field";
+  return "leaf";
 }
-```
 
-Nếu bản lucide của bạn thiếu `CircleHelp`, dùng `HelpCircle`.
+// ── Helper khai báo field ──
 
-## 6. `palette-data.ts`: thay toàn bộ
+const SIZE_KEYWORDS = ["auto", "full", "screen", "fit", "1/2", "1/3", "2/3", "1/4", "3/4"];
+const OPACITY_STEPS: OpacityStep[] = [10, 20, 30, 40, 50, 60, 70, 80, 90];
+const SPACING_STEPS = Array.from({ length: 25 }, (_, i) => i); // 0..24, khớp style-to-classes
 
-```ts
-import { NodeDefinition, NodeCategory, NodeTier } from "@/core/types/node-definition.types";
-import { BlockDefinition } from "@/core/types/block.types";
-import { searchNodes, getNodeDefinition } from "@/core/registry/node-registry";
-import { canContain } from "@/core/registry/node-rules";
-import { BLOCK_CATEGORY_ORDER, searchBlocks } from "@/core/registry/blocks";
-import { commonNodeIds } from "../constants/common-node-ids";
+const en = (
+  key: keyof StyleProps,
+  label: string,
+  values: readonly (string | number)[],
+  appliesTo?: NodeKind[]
+): StyleFieldSpec => ({
+  key,
+  label,
+  appliesTo,
+  control: { kind: "enum", options: values.map((v) => ({ value: v, label: String(v) })) },
+});
 
-export const CATEGORY_ORDER: NodeCategory[] = [
-  "Layout", "Typography", "Form", "List", "Media",
-  "Navigation", "Overlay", "Data Display", "Feedback", "Templates",
+const int = (
+  key: keyof StyleProps,
+  label: string,
+  min = 0,
+  max = 24,
+  appliesTo?: NodeKind[]
+): StyleFieldSpec => ({ key, label, appliesTo, control: { kind: "int", min, max } });
+
+const size = (key: keyof StyleProps, label: string, appliesTo?: NodeKind[]): StyleFieldSpec => ({
+  key,
+  label,
+  appliesTo,
+  control: { kind: "size", keywords: SIZE_KEYWORDS },
+});
+
+const color = (key: keyof StyleProps, label: string, appliesTo?: NodeKind[]): StyleFieldSpec => ({
+  key,
+  label,
+  appliesTo,
+  control: { kind: "color" },
+});
+
+const TEXT_KINDS: NodeKind[] = ["text", "button"];
+const TEXT_KINDS_ALL: NodeKind[] = ["text", "button", "field"];
+
+// bgGradient chưa có UI (value là object, cần control riêng) — để sau.
+export const FIELD_SPECS: StyleFieldSpec[] = [
+  // Layout
+  en("direction", "Hướng", ["flex-row", "flex-col"], ["container"]),
+  en("gridCols", "Số cột grid", [1, 2, 3, 4, 6, 12], ["container"]),
+  int("gap", "Khoảng cách con", 0, 24, ["container"]),
+  int("gapX", "Gap ngang", 0, 24, ["container"]),
+  int("gapY", "Gap dọc", 0, 24, ["container"]),
+  en("align", "Căn trục phụ", ["items-start", "items-center", "items-end"], ["container"]),
+  en("justify", "Căn trục chính", ["justify-start", "justify-center", "justify-between", "justify-end"], ["container"]),
+  en("flexWrap", "Xuống dòng", ["flex-nowrap", "flex-wrap", "flex-wrap-reverse"], ["container"]),
+  en("display", "Display", ["block", "inline-block", "hidden"]),
+
+  // Sizing
+  size("width", "Rộng"),
+  size("height", "Cao"),
+  en("maxWidth", "Max width", ["sm", "md", "lg", "xl", "2xl", "4xl", "6xl", "7xl", "full", "prose"]),
+  en("aspectRatio", "Tỉ lệ", ["auto", "square", "video"], ["media"]),
+  en("objectFit", "Object fit", ["cover", "contain", "fill"], ["media"]),
+
+  // Spacing
+  int("padding", "Padding"),
+  int("paddingX", "Padding ngang"),
+  int("paddingY", "Padding dọc"),
+  int("margin", "Margin"),
+  en("marginX", "Margin ngang", ["auto", ...SPACING_STEPS]),
+  int("marginY", "Margin dọc"),
+
+  // Self layout
+  en("alignSelf", "Tự căn", ["self-auto", "self-start", "self-center", "self-end", "self-stretch"]),
+  en("flexGrow", "Flex grow", [0, 1]),
+  en("flexShrink", "Flex shrink", [0, 1]),
+
+  // Position
+  en("position", "Position", ["static", "relative", "absolute", "fixed", "sticky"]),
+  int("top", "Top", -256, 256),
+  int("right", "Right", -256, 256),
+  int("bottom", "Bottom", -256, 256),
+  int("left", "Left", -256, 256),
+  en("zIndex", "Z-index", [0, 10, 20, 30, 40, 50]),
+
+  // Typography
+  en("fontSize", "Cỡ chữ", ["xs", "sm", "base", "lg", "xl", "2xl", "3xl", "4xl", "5xl", "6xl", "7xl"], TEXT_KINDS),
+  en("fontWeight", "Độ đậm", ["light", "normal", "medium", "semibold", "bold", "extrabold"], TEXT_KINDS),
+  en("fontFamily", "Font", ["sans", "serif", "mono"], TEXT_KINDS),
+  en("textAlign", "Căn chữ", ["left", "center", "right"], TEXT_KINDS_ALL),
+  en("lineHeight", "Line height", ["none", "tight", "snug", "normal", "relaxed", "loose"], TEXT_KINDS),
+  en("letterSpacing", "Letter spacing", ["tighter", "tight", "normal", "wide", "wider", "widest"], TEXT_KINDS),
+  en("textTransform", "Viết hoa", ["uppercase", "lowercase", "capitalize", "normal-case"], TEXT_KINDS),
+  en("textDecoration", "Gạch chân", ["underline", "line-through", "no-underline"], TEXT_KINDS),
+  color("textColor", "Màu chữ", TEXT_KINDS_ALL),
+  en("textOpacity", "Độ mờ chữ", OPACITY_STEPS, TEXT_KINDS_ALL),
+
+  // Appearance
+  color("bgColor", "Màu nền"),
+  en("bgOpacity", "Độ mờ nền", OPACITY_STEPS),
+  en("borderWidth", "Độ dày viền", [0, 1, 2, 4]),
+  color("borderColor", "Màu viền"),
+  en("borderOpacity", "Độ mờ viền", OPACITY_STEPS),
+  en("borderRadius", "Bo góc", ["none", "sm", "md", "lg", "xl", "2xl", "3xl", "full"]),
+  en("ringWidth", "Ring", [0, 1, 2, 4, 8]),
+  color("ringColor", "Màu ring"),
+  en("shadow", "Bóng đổ", ["none", "sm", "md", "lg", "xl", "2xl"]),
+  color("shadowColor", "Màu bóng"),
+
+  // Effects
+  en("opacity", "Opacity", [0, 25, 50, 75, 100]),
+  en("overflow", "Overflow", ["visible", "hidden", "scroll", "auto"]),
+  en("blur", "Blur", ["none", "sm", "md", "lg", "xl"]),
+  en("backdropBlur", "Backdrop blur", ["none", "sm", "md", "lg", "xl", "2xl"]),
+  en("cursor", "Con trỏ", ["pointer", "default", "not-allowed"]),
+
+  // Transform & transition
+  en("scale", "Scale (%)", [50, 75, 90, 95, 100, 105, 110, 125]),
+  en("rotate", "Xoay (độ)", [-45, -12, -6, -3, -2, -1, 1, 2, 3, 6, 12, 45, 90, 180]),
+  en("translateX", "Dịch ngang", [-4, -2, -1, 1, 2, 4]),
+  en("translateY", "Dịch dọc", [-4, -2, -1, 1, 2, 4]),
+  en("transition", "Transition", ["none", "all", "colors", "shadow", "transform"]),
+  en("duration", "Thời lượng (ms)", [75, 150, 200, 300, 500, 700]),
 ];
 
-export interface PaletteGroup { key: string; label: string; defs: NodeDefinition[] }
-export interface BlockGroup { key: string; label: string; blocks: BlockDefinition[] }
+export const FIELD_SPEC_BY_KEY = new Map<keyof StyleProps, StyleFieldSpec>(
+  FIELD_SPECS.map((spec) => [spec.key, spec] as const)
+);
 
-export interface PaletteData {
-  sealed: boolean;
-  parts: NodeDefinition[];
-  searchResults: NodeDefinition[];
-  element: PaletteGroup[];
-  component: PaletteGroup[];
-  blockResults: BlockDefinition[];
-  blockGroups: BlockGroup[];
-  counts: { element: number; component: number; block: number };
+export function fieldAppliesTo(spec: StyleFieldSpec, kind: NodeKind): boolean {
+  return !spec.appliesTo || spec.appliesTo.includes(kind);
+}
+```
+
+---
+
+## 4. `features/inspector/constants/inspector-groups.ts` (mới)
+
+Lưu ý: `GROUPS` cũ trong `preset-section.tsx` chuyển nguyên mảng `names` sang `PRESET_GROUPS` bên dưới, đổi tên và thêm `export`.
+
+```ts
+// features/inspector/constants/inspector-groups.ts
+
+import {
+  Star, Sparkles, LayoutGrid, Ruler, Space, Layers, Move, Type, Palette, Blend, RotateCw,
+  type LucideIcon,
+} from "lucide-react";
+import type { NodeDefinition } from "@/core/types/node-definition.types";
+import type { StyleProps, NodeStyle } from "@/core/types/style.types";
+import { anyKeyHasValue } from "@/core/utils/style-cascade";
+import {
+  FIELD_SPEC_BY_KEY,
+  fieldAppliesTo,
+  getNodeKind,
+  type NodeKind,
+  type StyleFieldSpec,
+} from "./style-field-schema";
+
+export type GroupId =
+  | "common" | "preset" | "layout" | "sizing" | "spacing" | "self-layout"
+  | "position" | "typography" | "appearance" | "effects" | "transform";
+
+export interface InspectorGroup {
+  id: GroupId;
+  label: string;
+  icon: LucideIcon;
+  fields: (keyof StyleProps)[];
 }
 
-export function buildPaletteData(parentDef: NodeDefinition | undefined, query: string): PaletteData {
-  const q = query.trim();
-  const allowed = (d: NodeDefinition) =>
-    !!parentDef &&
-    (d.nodeKind === "html" || d.nodeKind === "shadcn") &&
-    canContain(parentDef, d.nodeKind, d);
+// ── Nhóm "Hay dùng": danh sách field theo loại node ──
+const COMMON_KEYS_BY_KIND: Record<NodeKind, (keyof StyleProps)[]> = {
+  container: ["direction", "gap", "padding", "bgColor", "borderRadius"],
+  text: ["fontSize", "fontWeight", "textColor", "textAlign"],
+  button: ["paddingX", "paddingY", "borderRadius", "bgColor", "textColor", "shadow", "translateY", "transition"],
+  field: ["width", "paddingX", "paddingY", "borderRadius", "bgColor", "textColor"],
+  media: ["width", "aspectRatio", "objectFit", "borderRadius"],
+  leaf: ["width", "padding", "borderRadius", "bgColor"],
+};
 
-  const defs = searchNodes(q).filter(allowed);
-  const parts = defs.filter((d) => d.parentOnly);
-  const normal = defs.filter((d) => !d.parentOnly);
-  const tierOf = (d: NodeDefinition): NodeTier => d.tier ?? "element";
+export const INSPECTOR_GROUPS: InspectorGroup[] = [
+  { id: "common", label: "Hay dùng", icon: Star, fields: [] },
+  { id: "preset", label: "Preset", icon: Sparkles, fields: [] },
+  {
+    id: "layout", label: "Layout", icon: LayoutGrid,
+    fields: ["direction", "gridCols", "gap", "gapX", "gapY", "align", "justify", "flexWrap", "display"],
+  },
+  {
+    id: "sizing", label: "Kích thước", icon: Ruler,
+    fields: ["width", "height", "maxWidth", "aspectRatio", "objectFit"],
+  },
+  {
+    id: "spacing", label: "Khoảng cách", icon: Space,
+    fields: ["padding", "paddingX", "paddingY", "margin", "marginX", "marginY"],
+  },
+  { id: "self-layout", label: "Tự căn", icon: Layers, fields: ["alignSelf", "flexGrow", "flexShrink"] },
+  {
+    id: "position", label: "Vị trí", icon: Move,
+    fields: ["position", "top", "right", "bottom", "left", "zIndex"],
+  },
+  {
+    id: "typography", label: "Chữ", icon: Type,
+    fields: [
+      "fontSize", "fontWeight", "fontFamily", "textAlign", "lineHeight", "letterSpacing",
+      "textTransform", "textDecoration", "textColor", "textOpacity",
+    ],
+  },
+  {
+    id: "appearance", label: "Giao diện", icon: Palette,
+    fields: [
+      "bgColor", "bgOpacity", "borderWidth", "borderColor", "borderOpacity", "borderRadius",
+      "ringWidth", "ringColor", "shadow", "shadowColor",
+    ],
+  },
+  {
+    id: "effects", label: "Hiệu ứng", icon: Blend,
+    fields: ["opacity", "overflow", "blur", "backdropBlur", "cursor"],
+  },
+  {
+    id: "transform", label: "Biến đổi", icon: RotateCw,
+    fields: ["scale", "rotate", "translateX", "translateY", "transition", "duration"],
+  },
+];
 
-  const build = (tier: NodeTier): PaletteGroup[] => {
-    const groups: PaletteGroup[] = [];
-    if (!q) {
-      const common = commonNodeIds
-        .map((id) => getNodeDefinition(id))
-        .filter((d): d is NodeDefinition => !!d && allowed(d) && !d.parentOnly && tierOf(d) === tier);
-      if (common.length) groups.push({ key: "__common", label: "Hay dùng", defs: common });
-    }
-    const byCat = new Map<string, NodeDefinition[]>();
-    for (const d of normal.filter((x) => tierOf(x) === tier)) {
-      if (!byCat.has(d.category)) byCat.set(d.category, []);
-      byCat.get(d.category)!.push(d);
-    }
-    const ordered = [
-      ...CATEGORY_ORDER.filter((c) => byCat.has(c)),
-      ...[...byCat.keys()].filter((c) => !CATEGORY_ORDER.includes(c as NodeCategory)),
-    ];
-    ordered.forEach((c) => groups.push({ key: c, label: c, defs: byCat.get(c)! }));
-    return groups;
-  };
-
-  // Block chỉ hiện nếu node gốc của block được phép nằm trong cha đang chọn
-  const blockResults = searchBlocks(q).filter((b) => {
-    const rootDef = getNodeDefinition(b.spec.defId);
-    return !!parentDef && !!rootDef && canContain(parentDef, rootDef.nodeKind, rootDef);
+// Keys của group với loại node cụ thể (đã lọc theo appliesTo).
+export function getGroupKeys(group: InspectorGroup, kind: NodeKind): (keyof StyleProps)[] {
+  if (group.id === "preset") return [];
+  if (group.id === "common") return COMMON_KEYS_BY_KIND[kind];
+  return group.fields.filter((key) => {
+    const spec = FIELD_SPEC_BY_KEY.get(key);
+    return !!spec && fieldAppliesTo(spec, kind);
   });
-  const blockGroups = BLOCK_CATEGORY_ORDER
-    .map((c) => ({ key: c, label: c, blocks: blockResults.filter((b) => b.category === c) }))
-    .filter((g) => g.blocks.length > 0);
+}
+
+export function getGroupFields(group: InspectorGroup, kind: NodeKind): StyleFieldSpec[] {
+  return getGroupKeys(group, kind)
+    .map((key) => FIELD_SPEC_BY_KEY.get(key))
+    .filter((spec): spec is StyleFieldSpec => !!spec);
+}
+
+// Ẩn group không có field nào cho loại node này (VD: Layout với Button).
+// Common và Preset luôn hiện.
+export function getVisibleGroups(kind: NodeKind): InspectorGroup[] {
+  return INSPECTOR_GROUPS.filter(
+    (g) => g.id === "common" || g.id === "preset" || getGroupKeys(g, kind).length > 0
+  );
+}
+
+// Chấm trên tile: group có field nào được đặt ở BẤT KỲ layer nào.
+export function groupHasValue(style: NodeStyle, keys: (keyof StyleProps)[]): boolean {
+  return anyKeyHasValue(style, keys);
+}
+
+// ── Preset: nhóm và độ liên quan theo loại node ──
+
+export type PresetGroupId = "layout" | "surface" | "text" | "action" | "media" | "other";
+
+// Chuyển nguyên mảng `names` của GROUPS cũ sang đây.
+export const PRESET_GROUPS: { id: PresetGroupId; label: string; names: string[] }[] = [
+  // { id: "layout", label: "Layout", names: [...] },
+  // { id: "surface", label: "Surface", names: [...] },
+  // { id: "text", label: "Text", names: [...] },
+  // { id: "action", label: "Action", names: [...] },
+  // { id: "media", label: "Media & Form", names: [...] },
+];
+
+const PRESET_RELEVANCE_BY_KIND: Record<NodeKind, PresetGroupId[]> = {
+  container: ["layout", "surface"],
+  text: ["text"],
+  button: ["action"],
+  field: ["media"],
+  media: ["media"],
+  leaf: ["surface"],
+};
+
+// Ưu tiên theo defId khi kind không đủ mô tả (vd <a> vừa text vừa action).
+const PRESET_RELEVANCE_BY_DEF: Record<string, PresetGroupId[]> = {
+  "html.a": ["text", "action"],
+  "shadcn.badge": ["action", "text"],
+  "shadcn.avatar": ["media"],
+  "shadcn.alert": ["surface", "text"],
+};
+
+export function relevantPresetGroups(def?: NodeDefinition): PresetGroupId[] {
+  if (!def) return ["layout"];
+  return PRESET_RELEVANCE_BY_DEF[def.id] ?? PRESET_RELEVANCE_BY_KIND[getNodeKind(def)];
+}
+```
+
+---
+
+## 5. `features/inspector/hooks/use-style-field.ts`
+
+Giữ nguyên API cũ (`getValue`, `setValue`, `hasOverride`, `clearOverride`) nên `style-controls.tsx` và các section cũ vẫn chạy.
+
+```ts
+// features/inspector/hooks/use-style-field.ts
+
+"use client";
+
+import { TreeNode } from "@/core/types/builder.types";
+import { StyleProps } from "@/core/types/style.types";
+import { useBuilderStore } from "@/core/store/builder-store";
+import { getEffectiveStyleValue, hasOverrideAt, resolveLayer } from "@/core/utils/style-cascade";
+
+export function useStyleField(node: TreeNode) {
+  const activeBreakpoint = useBuilderStore((s) => s.activeBreakpoint);
+  const activeState = useBuilderStore((s) => s.activeState);
+  const updateNodeStyleLayer = useBuilderStore((s) => s.updateNodeStyleLayer);
+  const clearNodeStyleLayerOverride = useBuilderStore((s) => s.clearNodeStyleLayerOverride);
+
+  // Một nguồn duy nhất cho layer đang chỉnh: breakpoint khi normal, state khi hover/focus/active.
+  const layer = resolveLayer(activeBreakpoint, activeState);
 
   return {
-    sealed: !!parentDef?.allowedChildIds,
-    parts,
-    searchResults: defs,
-    element: build("element"),
-    component: build("component"),
-    blockResults,
-    blockGroups,
-    counts: {
-      element: normal.filter((d) => tierOf(d) === "element").length,
-      component: normal.filter((d) => tierOf(d) === "component").length,
-      block: blockResults.length,
-    },
+    layer,
+    state: activeState,
+    breakpoint: activeBreakpoint,
+    getValue: <K extends keyof StyleProps>(key: K) =>
+      getEffectiveStyleValue(node.style, layer, key),
+    setValue: <K extends keyof StyleProps>(key: K, value: StyleProps[K]) =>
+      updateNodeStyleLayer(node.id, layer, { [key]: value } as Partial<StyleProps>),
+    hasOverride: (key: keyof StyleProps) => hasOverrideAt(node.style, layer, key),
+    clearOverride: (key: keyof StyleProps) => clearNodeStyleLayerOverride(node.id, layer, key),
   };
 }
 ```
 
-## 7. `palette-sections.tsx`
+---
 
-**Thêm import** `import { cn } ...` đã có. Thêm component `BlockCard` (đặt dưới `PaletteTile`):
+## 6. `features/inspector/components/schema-field.tsx` (mới)
 
 ```tsx
-export function BlockCard({
-  title, description, Icon, nodeCount, selected, onClick,
-}: {
-  title: string; description: string; Icon: LucideIcon;
-  nodeCount: number; selected?: boolean; onClick: () => void;
-}) {
+// features/inspector/components/schema-field.tsx
+
+"use client";
+
+import { useEffect, useState } from "react";
+import { TreeNode } from "@/core/types/builder.types";
+import { useStyleField } from "../hooks/use-style-field";
+import type { FieldControl, EnumOption, StyleFieldSpec } from "../constants/style-field-schema";
+import { StyleField } from "./style-field";
+
+// Giống COLOR_TOKEN / HEX_COLOR trong style-to-classes.ts, để không lưu giá trị sẽ bị bỏ im lặng.
+const COLOR_TOKEN = /^[a-z]+(?:-[a-z]+)?(?:-\d{2,3})?(?:\/(?:[0-9]|[1-9][0-9]|100))?$/;
+const HEX_COLOR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+const isValidColor = (v: string) => COLOR_TOKEN.test(v) || HEX_COLOR.test(v);
+
+export function SchemaField({ node, spec }: { node: TreeNode; spec: StyleFieldSpec }) {
+  const { getValue, setValue, hasOverride, clearOverride } = useStyleField(node);
+  const value = getValue(spec.key);
+
   return (
-    <button
-      type="button" onClick={onClick}
-      className={cn(
-        "flex flex-col items-start gap-1 rounded-md border bg-background p-2 text-left hover:bg-accent active:bg-accent",
-        selected && "border-primary bg-primary/10"
-      )}
+    <StyleField
+      label={spec.label}
+      showClear={hasOverride(spec.key)}
+      onClear={() => clearOverride(spec.key)}
     >
-      <div className="flex w-full items-center gap-1.5">
-        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="truncate text-xs font-medium">{title}</span>
-        <span className="ml-auto shrink-0 text-[9px] text-muted-foreground">{nodeCount} node</span>
-      </div>
-      <p className="line-clamp-2 text-[10px] leading-snug text-muted-foreground">{description}</p>
-    </button>
+      <ControlRenderer
+        control={spec.control}
+        value={value}
+        onChange={(next) => setValue(spec.key, next as never)}
+      />
+    </StyleField>
+  );
+}
+
+function ControlRenderer({
+  control,
+  value,
+  onChange,
+}: {
+  control: FieldControl;
+  value: unknown;
+  onChange: (next: unknown) => void;
+}) {
+  switch (control.kind) {
+    case "enum":
+      return <EnumSelect options={control.options} value={value} onChange={onChange} />;
+    case "int":
+      return (
+        <IntInput
+          value={value as number | undefined}
+          min={control.min}
+          max={control.max}
+          onCommit={onChange}
+        />
+      );
+    case "size":
+      return <SizeControl keywords={control.keywords} value={value} onChange={onChange} />;
+    case "color":
+      return <ColorInput value={value as string | undefined} onCommit={onChange} />;
+  }
+}
+
+function EnumSelect({
+  options,
+  value,
+  onChange,
+}: {
+  options: EnumOption[];
+  value: unknown;
+  onChange: (next: unknown) => void;
+}) {
+  const raw = value === undefined ? "" : String(value);
+  return (
+    <select
+      value={raw}
+      onChange={(event) => {
+        const picked = event.target.value;
+        if (picked === "") return onChange(undefined);
+        const match = options.find((option) => String(option.value) === picked);
+        if (match) onChange(match.value);
+      }}
+      className="border rounded px-2 py-1"
+    >
+      <option value="">—</option>
+      {options.map((option) => (
+        <option key={String(option.value)} value={String(option.value)}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+// Dùng draft: commit khi blur/Enter, nên gõ "-" hay "1" rồi "12" không bị reset giữa chừng.
+function IntInput({
+  value,
+  min,
+  max,
+  onCommit,
+}: {
+  value?: number;
+  min: number;
+  max: number;
+  onCommit: (next: number | undefined) => void;
+}) {
+  const stored = value === undefined ? "" : String(value);
+  const [draft, setDraft] = useState(stored);
+  useEffect(() => setDraft(stored), [stored]);
+
+  const commit = () => {
+    if (draft.trim() === "") return onCommit(undefined);
+    const parsed = Number(draft);
+    if (!Number.isInteger(parsed)) return setDraft(stored);
+    const clamped = Math.min(max, Math.max(min, parsed));
+    onCommit(clamped);
+    setDraft(String(clamped));
+  };
+
+  return (
+    <input
+      type="number"
+      min={min}
+      max={max}
+      step={1}
+      placeholder="—"
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") commit();
+      }}
+      className="border rounded px-2 py-1 w-full"
+    />
+  );
+}
+
+// Từ khóa (full, 1/2...) hoặc px. Chọn "px" mới hiện ô số.
+function SizeControl({
+  keywords,
+  value,
+  onChange,
+}: {
+  keywords: string[];
+  value: unknown;
+  onChange: (next: unknown) => void;
+}) {
+  const isPx = typeof value === "number";
+  const selectValue = isPx ? "__px" : value === undefined ? "" : String(value);
+
+  return (
+    <div className="flex gap-1">
+      <select
+        value={selectValue}
+        onChange={(event) => {
+          const picked = event.target.value;
+          if (picked === "") return onChange(undefined);
+          if (picked === "__px") return onChange(isPx ? (value as number) : 0);
+          onChange(picked);
+        }}
+        className="border rounded px-2 py-1 min-w-0 flex-1"
+      >
+        <option value="">—</option>
+        {keywords.map((keyword) => (
+          <option key={keyword} value={keyword}>
+            {keyword}
+          </option>
+        ))}
+        <option value="__px">px</option>
+      </select>
+      {isPx && (
+        <div className="w-20">
+          <IntInput value={value as number} min={0} max={2000} onCommit={onChange} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ColorInput({
+  value,
+  onCommit,
+}: {
+  value?: string;
+  onCommit: (next: string | undefined) => void;
+}) {
+  const stored = value ?? "";
+  const [draft, setDraft] = useState(stored);
+  useEffect(() => setDraft(stored), [stored]);
+
+  const commit = () => {
+    const trimmed = draft.trim();
+    if (trimmed === "") return onCommit(undefined);
+    if (isValidColor(trimmed)) return onCommit(trimmed);
+    setDraft(stored); // sai định dạng thì quay về giá trị đã lưu
+  };
+
+  return (
+    <input
+      type="text"
+      placeholder="zinc-900 hoặc #hex"
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") commit();
+      }}
+      className="border rounded px-2 py-1"
+    />
   );
 }
 ```
 
-**Sửa `PaletteTabs`:** bỏ khóa Blocks, đếm đủ 3 tầng:
+---
+
+## 7. `features/inspector/components/preset-section.tsx` (viết lại)
 
 ```tsx
-const TABS: { id: NodeTier; label: string }[] = [
-  { id: "element", label: "Elements" },
-  { id: "component", label: "Components" },
-  { id: "block", label: "Blocks" },
-];
+// features/inspector/components/preset-section.tsx
 
-export function PaletteTabs({
-  value, onChange, counts,
-}: {
-  value: NodeTier; onChange: (t: NodeTier) => void;
-  counts: { element: number; component: number; block: number };
-}) {
+"use client";
+
+import { useState } from "react";
+import { ChevronRight, RotateCcw } from "lucide-react";
+import { TreeNode } from "@/core/types/builder.types";
+import { useBuilderStore } from "@/core/store/builder-store";
+import { getNodeDefinition } from "@/core/registry/node-registry";
+import { STYLE_PRESETS } from "@/core/registry/style-presets";
+import { cn } from "@/core/utils/cn";
+import {
+  PRESET_GROUPS,
+  relevantPresetGroups,
+  type PresetGroupId,
+} from "../constants/inspector-groups";
+
+export function PresetSection({ node }: { node: TreeNode }) {
+  const applyStylePreset = useBuilderStore((s) => s.applyStylePreset);
+  const [lastApplied, setLastApplied] = useState<string | null>(null);
+
+  const relevant = relevantPresetGroups(getNodeDefinition(node.type));
+  const [openIds, setOpenIds] = useState<Set<PresetGroupId>>(() => new Set(relevant));
+
+  // Preset mới chưa xếp nhóm tự rơi vào "Khác" — không bao giờ bị ẩn.
+  const known = new Set(Object.keys(STYLE_PRESETS));
+  const groups = PRESET_GROUPS
+    .map((g) => ({ ...g, names: g.names.filter((n) => known.has(n)) }))
+    .filter((g) => g.names.length > 0);
+  const used = new Set(groups.flatMap((g) => g.names));
+  const leftover = Object.keys(STYLE_PRESETS).filter((n) => !used.has(n));
+  if (leftover.length > 0) groups.push({ id: "other", label: "Khác", names: leftover });
+
+  const rank = (id: PresetGroupId) => {
+    const i = relevant.indexOf(id);
+    return i === -1 ? 999 : i;
+  };
+  const sorted = [...groups].sort((a, b) => rank(a.id) - rank(b.id));
+
+  const toggle = (id: PresetGroupId) =>
+    setOpenIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const apply = (name: string | null) => {
+    // Preset thay toàn bộ style, kể cả mọi breakpoint và state — cần xác nhận.
+    if (!window.confirm("Áp preset sẽ thay toàn bộ style của node (mọi breakpoint và trạng thái). Tiếp tục?")) {
+      return;
+    }
+    applyStylePreset(node.id, name);
+    setLastApplied(name ?? "default");
+  };
+
   return (
-    <div className="flex gap-1 border-b px-2 py-1.5">
-      {TABS.map((t) => (
-        <button
-          key={t.id} type="button" onClick={() => onChange(t.id)}
-          className={cn(
-            "flex-1 rounded-md px-2 py-1 text-xs",
-            value === t.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"
-          )}
-        >
-          {t.label}
-          <span className="ml-1 opacity-60">{counts[t.id]}</span>
-        </button>
-      ))}
+    <div className="flex flex-col gap-2">
+      {sorted.map((g) => {
+        const isOpen = openIds.has(g.id);
+        const isRelevant = relevant.includes(g.id);
+
+        return (
+          <div key={g.id} className="rounded-md border">
+            <button
+              type="button"
+              onClick={() => toggle(g.id)}
+              className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-xs font-medium"
+            >
+              <ChevronRight className={cn("h-3 w-3 shrink-0 transition-transform", isOpen && "rotate-90")} />
+              {g.label}
+              <span className="font-normal text-muted-foreground">({g.names.length})</span>
+              {isRelevant && (
+                <span className="ml-auto rounded bg-primary/10 px-1.5 text-[10px] font-normal text-primary">
+                  Gợi ý
+                </span>
+              )}
+            </button>
+
+            {isOpen && (
+              <div className="flex flex-wrap gap-1 border-t px-2 py-2">
+                {g.names.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    title={STYLE_PRESETS[name].description}
+                    onClick={() => apply(name)}
+                    className={cn(
+                      "rounded border px-2 py-1 text-xs hover:bg-muted",
+                      lastApplied === name && "border-primary bg-primary/10 text-primary"
+                    )}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {lastApplied && (
+        <p className="text-[10px] text-muted-foreground">
+          Đã áp dụng: <b>{lastApplied}</b>
+          {STYLE_PRESETS[lastApplied]
+            ? ` — ${STYLE_PRESETS[lastApplied].description}`
+            : " — preset mặc định của loại node này"}
+        </p>
+      )}
+
+      <button
+        type="button"
+        onClick={() => apply(null)}
+        className="flex items-center gap-1.5 self-start text-xs text-muted-foreground hover:text-foreground"
+      >
+        <RotateCcw className="h-3 w-3" />
+        Reset về mặc định
+      </button>
     </div>
   );
 }
 ```
 
-## 8. `quick-add-dropdown.tsx`: 5 chỗ
+---
 
-**a) Import thêm:**
-
-```tsx
-import { BlockCard } from "./palette-sections";   // gộp vào import palette-sections hiện có
-import { getBlockIcon } from "../constants/block-icons";
-import { countSpecNodes } from "@/core/registry/blocks";
-import { BlockDefinition } from "@/core/types/block.types";
-```
-
-**b) Cạnh các `useBuilderStore` khác:**
+## 8. `features/inspector/components/inspector-panel.tsx` (viết lại)
 
 ```tsx
-  const addBlock = useBuilderStore((s) => s.addBlock);
-```
+// features/inspector/components/inspector-panel.tsx
 
-**c) Cạnh `handleAddDef`:**
+"use client";
 
-```tsx
-  const handleAddBlock = (blockId: string) => {
-    addBlock(parentId, blockId);
-    onClose();
-  };
-```
+import { useState } from "react";
+import { X } from "lucide-react";
+import { useActiveNode, useBuilderStore } from "@/core/store/builder-store";
+import { getNodeDefinition } from "@/core/registry/node-registry";
+import { cn } from "@/core/utils/cn";
+import type { ActiveState } from "@/core/utils/style-cascade";
+import { BreakpointSwitcher } from "./breakpoint-switcher";
+import { DynamicPropsForm } from "./dynamic-props-form";
+import { PresetSection } from "./preset-section";
+import { SchemaField } from "./schema-field";
+import { getNodeKind } from "../constants/style-field-schema";
+import {
+  getGroupFields,
+  getGroupKeys,
+  getVisibleGroups,
+  groupHasValue,
+  type GroupId,
+} from "../constants/inspector-groups";
 
-**d) Cạnh `defTile` trong phần render:**
+const STATES: { id: ActiveState; label: string }[] = [
+  { id: "normal", label: "Thường" },
+  { id: "hover", label: "Hover" },
+  { id: "focus", label: "Focus" },
+  { id: "active", label: "Active" },
+];
 
-```tsx
-  const blockCard = (b: BlockDefinition) => (
-    <BlockCard
-      key={b.id} title={b.title} description={b.description}
-      Icon={getBlockIcon(b.id)} nodeCount={countSpecNodes(b.spec)}
-      onClick={() => handleAddBlock(b.id)}
-    />
-  );
-```
+export function InspectorPanel() {
+  const activeNode = useActiveNode();
+  const setActiveNode = useBuilderStore((s) => s.setActiveNode);
+  const editMode = useBuilderStore((s) => s.editMode);
+  const activeState = useBuilderStore((s) => s.activeState);
+  const setActiveState = useBuilderStore((s) => s.setActiveState);
+  const [selectedId, setSelectedId] = useState<GroupId>("common");
 
-**e) Thay nhánh `searching`** (khối `{searching ? ( ... ) : ( ... )}`: phần đầu tiên, trước dấu `:`):
+  if (!editMode || !activeNode) return null;
 
-```tsx
-        {searching ? (
-          projectTiles.length + data.searchResults.length + data.blockResults.length === 0 ? (
-            <p className="py-4 text-center text-xs text-muted-foreground">Không tìm thấy node nào</p>
-          ) : (
-            <>
-              <div className="grid grid-cols-4 gap-1">
-                {projectTiles}
-                {data.searchResults.map(defTile)}
-              </div>
-              {data.blockResults.length > 0 && (
-                <PaletteSection label="Block" count={data.blockResults.length}>
-                  <div className="grid grid-cols-2 gap-1.5">{data.blockResults.map(blockCard)}</div>
-                </PaletteSection>
-              )}
-            </>
-          )
-        ) : (
-```
+  const def = getNodeDefinition(activeNode.type);
+  // Component Instance không có style riêng — style nằm ở Component gốc (nguyên tắc V1.9).
+  const isInstance = def?.nodeKind === "component-instance";
+  const kind = getNodeKind(def);
+  const groups = getVisibleGroups(kind);
+  const current = groups.find((g) => g.id === selectedId) ?? groups[0];
+  const fields = current ? getGroupFields(current, kind) : [];
 
-**f) Thay biểu thức** `{!data.sealed && tab === "block" ? null : !data.sealed && groups.map(...)}` bằng:
+  return (
+    <div className="fixed top-4 right-4 w-80 bg-white/50 border rounded-lg shadow-lg flex flex-col z-[6000] max-h-[80vh]">
+      <div className="sticky top-0 bg-white px-4 py-3 flex items-center justify-between border-b border-zinc-100">
+        <span className="text-sm font-medium">{def?.title ?? activeNode.type}</span>
+        <button
+          type="button"
+          onClick={() => setActiveNode(null)}
+          className="text-muted-foreground hover:text-foreground"
+        >
+          <X className="size-4" />
+        </button>
+      </div>
 
-```tsx
-            {!data.sealed && tab === "block" &&
-              data.blockGroups.map((g) => (
-                <PaletteSection key={g.key} label={g.label} count={g.blocks.length}>
-                  <div className="grid grid-cols-2 gap-1.5">{g.blocks.map(blockCard)}</div>
-                </PaletteSection>
-              ))}
+      {isInstance ? (
+        <p className="p-4 text-xs text-muted-foreground">
+          Component Instance không sửa trực tiếp — chọn đúng Component gốc trong Components/ để sửa.
+        </p>
+      ) : (
+        <div className="min-h-0 overflow-y-auto p-3 flex flex-col gap-3 bg-white/30 backdrop-blur-[2px]">
+          <DynamicPropsForm node={activeNode} />
 
-            {!data.sealed && tab !== "block" &&
-              groups.map((g, i) => (
-                <PaletteSection
-                  key={g.key} label={g.label} count={g.defs.length}
-                  open={isOpen(g.key, i)} onToggle={() => toggle(g.key, i)}
+          {/* Trạng thái tương tác */}
+          <div className="flex rounded-md border p-0.5 text-[11px]">
+            {STATES.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setActiveState(s.id)}
+                className={cn(
+                  "flex-1 rounded px-1.5 py-1",
+                  activeState === s.id ? "bg-sky-500 text-white" : "hover:bg-zinc-100"
+                )}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Breakpoint chỉ áp dụng khi đang ở trạng thái thường */}
+          {activeState === "normal" && <BreakpointSwitcher />}
+
+          {/* Lưới nhóm */}
+          <div className="grid grid-cols-4 gap-1">
+            {groups.map((g) => {
+              const Icon = g.icon;
+              const selected = g.id === current?.id;
+              const hasValue =
+                g.id !== "preset" && groupHasValue(activeNode.style, getGroupKeys(g, kind));
+              return (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => setSelectedId(g.id)}
+                  className={cn(
+                    "relative flex flex-col items-center gap-1 rounded-md p-2 text-[10px] transition-colors",
+                    selected ? "ring-2 ring-sky-500 bg-sky-50" : "hover:bg-zinc-100"
+                  )}
                 >
-                  <div className="grid grid-cols-4 gap-1">{g.defs.map(defTile)}</div>
-                </PaletteSection>
-              ))}
-```
+                  <Icon className="size-4" />
+                  <span className="w-full truncate text-center">{g.label}</span>
+                  {hasValue && <span className="absolute right-1 top-1 size-1.5 rounded-full bg-sky-500" />}
+                </button>
+              );
+            })}
+          </div>
 
-## 9. `add-node-browser.tsx`: 4 chỗ
-
-**a) Import thêm:**
-
-```tsx
-import { BlockCard } from "./palette-sections";   // gộp vào import palette-sections hiện có
-import { getBlockIcon } from "../constants/block-icons";
-import { countSpecNodes } from "@/core/registry/blocks";
-import { BlockDefinition } from "@/core/types/block.types";
-```
-
-**b) Mở rộng `Selection` và thêm `addBlock`:**
-
-```tsx
-type Selection =
-  | { kind: "definition"; id: string }
-  | { kind: "component"; id: string }
-  | { kind: "block"; id: string };
-```
-
-```tsx
-  const addBlock = useBuilderStore((s) => s.addBlock);
-```
-
-**c) Sửa `handleAdd`:**
-
-```tsx
-    if (selection.kind === "definition") {
-      addNode(parentId, selection.id);
-    } else if (selection.kind === "block") {
-      addBlock(parentId, selection.id);
-    } else {
-      // ...nhánh component giữ nguyên
-    }
-```
-
-**d) Thêm `blockRow` cạnh `defRow`, rồi sửa 2 chỗ render:**
-
-```tsx
-  const blockRow = (b: BlockDefinition) => (
-    <BlockCard
-      key={b.id} title={b.title} description={b.description}
-      Icon={getBlockIcon(b.id)} nodeCount={countSpecNodes(b.spec)}
-      selected={selection?.kind === "block" && selection.id === b.id}
-      onClick={() => setSelection({ kind: "block", id: b.id })}
-    />
+          {/* Nội dung nhóm đang chọn */}
+          <div className="flex flex-col gap-3 border-t pt-3">
+            {current?.id === "preset" ? (
+              <PresetSection key={activeNode.id} node={activeNode} />
+            ) : (
+              <>
+                <h3 className="text-xs font-medium">{current?.label}</h3>
+                {activeState !== "normal" && (
+                  <p className="text-[10px] text-muted-foreground">
+                    Đang chỉnh trạng thái <b>{activeState}</b>. Style này chỉ áp dụng khi trạng thái xảy ra.
+                  </p>
+                )}
+                {fields.length === 0 && (
+                  <p className="text-xs text-muted-foreground">Không có thuộc tính cho loại node này.</p>
+                )}
+                {fields.map((spec) => (
+                  <SchemaField key={spec.key} node={activeNode} spec={spec} />
+                ))}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
+}
 ```
 
-Trong nhánh `searching`, thêm điều kiện và render block:
+---
 
-```tsx
-                filteredComponents.length + data.searchResults.length + data.blockResults.length === 0 ? (
-                  <p className="py-4 text-center text-xs text-muted-foreground">Không tìm thấy node nào</p>
-                ) : (
-                  <>
-                    {projectRows(filteredComponents)}
-                    {data.searchResults.map(defRow)}
-                    {data.blockResults.length > 0 && (
-                      <PaletteSection label="Block" count={data.blockResults.length}>
-                        <div className="flex flex-col gap-1.5">{data.blockResults.map(blockRow)}</div>
-                      </PaletteSection>
-                    )}
-                  </>
-                )
-```
+## Lưu ý khi chạy thử
 
-Và thay dòng `{!data.sealed && tab !== "block" && groups.map(...)}` bằng:
+1. **Hover và breakpoint:** state hover/focus/active không chỉnh theo breakpoint. Panel ẩn `BreakpointSwitcher` khi không ở trạng thái thường. Lý do là `styleToClasses` sinh `hover:` ở mức layer, không có kiểu `hover:md:`. Nếu cần hover theo breakpoint, phải đổi `style-to-classes.ts` trước.
+2. **Preset:** giờ có `window.confirm`. Preset không theo state, nên áp dụng sẽ xóa cả hover đã chỉnh.
+3. **Số nhóm:** còn 11 nhóm kèm "Hay dùng" và "Preset", tổng 13 tile. `typography-extras` và `extras` đã gộp vào các nhóm chính.
+4. **Chưa có UI:** `bgGradient` (cần control object riêng). Ô màu hiện là text input, có thể thay bằng `color-picker-field.tsx` trong `ColorInput` khi biết props của nó.
+5. **Dọn dẹp sau này:** `style-controls.tsx` và các section cũ (`spacing-section`, `sizing-section`...) có thể xóa khi đã chuyển hết sang schema. `StyleNumberField` vẫn hard-code `min={0} max={24}`, nên đừng dùng cho `top/left`.
+6. **Kiểm tra trước khi merge:** tên icon lucide (`Space`, `Move`, `Type`) trong `lucide-react` v1, đường dẫn `cn` và `BreakpointSwitcher`/`DynamicPropsForm` đúng với props hiện có.
 
-```tsx
-                  {!data.sealed && tab === "block" &&
-                    data.blockGroups.map((g) => (
-                      <PaletteSection key={g.key} label={g.label} count={g.blocks.length}>
-                        <div className="flex flex-col gap-1.5">{g.blocks.map(blockRow)}</div>
-                      </PaletteSection>
-                    ))}
-                  {!data.sealed && tab !== "block" &&
-                    groups.map((g, i) => (
-                      <PaletteSection
-                        key={g.key} label={g.label} count={g.defs.length}
-                        open={isOpen(g.key, i)} onToggle={() => toggle(g.key, i)}
-                      >
-                        <div className="pl-2">{g.defs.map(defRow)}</div>
-                      </PaletteSection>
-                    ))}
-```
-
-## Kiểm tra sau v6.9
-
-1. Mở console khi chạy `pnpm dev`: **không có** dòng `[blocks] Phát hiện lỗi...`. Nếu có, nó chỉ đúng block và đường dẫn node bị sai.
-2. Chọn **Page**, bấm `+`, tab **Blocks**: 3 nhóm (Điều hướng, Mở đầu, Nội dung...) hiện 2 cột, mỗi thẻ có icon, số node và mô tả.
-3. Chèn **Navbar**, **Hero**, **Bảng giá**, **Footer** lần lượt: trang ra đúng bố cục, 3 gói giá thành lưới, gói giữa có viền xanh.
-4. Chèn **FAQ**: bấm mở/đóng từng câu hỏi được, thêm một `Accordion Item` thì có câu thứ 5.
-5. Chèn **Hero** hai lần rồi sửa chữ ở bản đầu: bản thứ hai **không đổi theo**. Đó là bản sao độc lập.
-6. Chọn **Tabs** rồi bấm `+`: không có tab Blocks, vì Tabs không nhận block.
-7. Chọn `Div` rồi chèn **Login**: thẻ nằm gọn trong Div.
-8. Gõ "pricing" vào ô tìm: ra block Bảng giá kèm nhãn nhóm "Block".
-9. Mở **Code**: mỗi block xuất ra JSX hợp lệ, có đủ `import` Accordion, Avatar, Card, Button...
-10. **Lưu rồi mở lại project**: block vẫn đủ (block chỉ là node thường trong cây).
-
-## Hạn chế cần biết
-
-- **AI chưa biết Block.** Gõ "thêm trang chủ" thì AI vẫn tự ghép từng node. Cho AI gọi block được thì cần thêm danh sách block vào prompt và một loại thao tác mới, đáng làm riêng.
-- **Block hardcode:** 10 block do bạn kiểm soát, đúng như bạn chốt. Muốn thêm block mới chỉ cần thêm một mục vào mảng `BLOCKS`, bộ kiểm tra dev sẽ bắt lỗi ngay.
-- **Khoảng cách và font** dựa trên preset hiện có. Nếu muốn khác thì sửa `style-presets.ts`, mọi block đổi theo.
-
-## Tổng kết v6
-
-Bạn đã có đủ 3 tầng:
-
-| Tầng | Số lượng |
-|---|---|
-| Elements | khoảng 60+ node lẻ |
-| Components | khoảng 30 cụm có nội dung mẫu |
-| Blocks | 10 block ghép sẵn |
+Bạn chạy thử và gửi lỗi (nếu có) hoặc ảnh panel, tôi sẽ sửa tiếp.
