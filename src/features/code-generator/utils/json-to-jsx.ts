@@ -21,12 +21,18 @@ function indent(level: number) {
   return "  ".repeat(level);
 }
 
-function genericAttrs(propsSchema: PropMeta[], nodeProps: Record<string, unknown>): string {
+function genericAttrs(
+  propsSchema: PropMeta[],
+  nodeProps: Record<string, unknown>,
+  omitEmptyStrings = false
+): string {
   return propsSchema
     .filter((meta) => !META_ONLY_KEYS.has(meta.key))
     .map((meta) => {
       const value = nodeProps[meta.key];
-      const attrName = meta.key === "checked" ? "defaultChecked" : meta.key;
+      if (omitEmptyStrings && (value === undefined || value === null || value === "")) return "";
+      const attrName =
+        meta.key === "checked" ? "defaultChecked" : meta.key === "ariaLabel" ? "aria-label" : meta.key;
       if (meta.inputType === "checkbox") return ` ${attrName}={${!!value}}`;
       if (meta.inputType === "number") return ` ${attrName}={${Number(value ?? 0)}}`;
       return ` ${attrName}="${escapeAttr(value)}"`;
@@ -60,7 +66,7 @@ export function nodeToJsx(node: TreeNode, level: number, componentFileMap: Compo
     const childrenJsx = node.children.map((c) => nodeToJsx(c, level + 1, componentFileMap)).join("\n");
     if (entry.toJsx) return entry.toJsx(node, childrenJsx, className, pad);
 
-    const attrs = genericAttrs(def.propsSchema, node.props);
+    const attrs = genericAttrs(def.propsSchema, node.props, node.type === "html.div");
     if (node.children.length === 0) {
       return `${pad}<${entry.jsxTagName}${classAttr}${attrs} />`;
     }

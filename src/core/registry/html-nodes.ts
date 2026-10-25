@@ -9,7 +9,20 @@ type RawDef = Omit<NodeDefinition, "nodeKind">;
 
 const rawHtmlNodes: RawDef[] = [
   // ── Layout ──
-  { id: "html.div", title: "Div", category: "Layout", tags: ["layout", "container", "flex", "div"], canHaveChildren: true, defaultProps: {}, defaultStyle: containerDefaultStyle, propsSchema: [] },
+  {
+    id: "html.div",
+    title: "Div",
+    category: "Layout",
+    tags: ["layout", "container", "flex", "div"],
+    canHaveChildren: true,
+    defaultProps: { id: "", title: "", ariaLabel: "" },
+    defaultStyle: containerDefaultStyle,
+    propsSchema: [
+      { key: "id", label: "ID (id)", inputType: "text" },
+      { key: "title", label: "Tooltip (title)", inputType: "text" },
+      { key: "ariaLabel", label: "Nhãn cho đọc màn hình (aria-label)", inputType: "text" },
+    ],
+  },
   { id: "html.section", title: "Section", category: "Layout", tags: ["layout", "container", "section"], canHaveChildren: true,defaultProps: {}, defaultStyle: containerDefaultStyle, propsSchema: [] },
   { id: "html.main", title: "Main", category: "Layout", tags: ["layout", "container", "main", "content"], canHaveChildren: true, defaultProps: {}, defaultStyle: containerDefaultStyle, propsSchema: [] },
   { id: "html.header", title: "Header", category: "Layout", tags: ["layout", "container", "header", "top"], canHaveChildren: true, defaultProps: {}, defaultStyle: containerDefaultStyle, propsSchema: [] },
