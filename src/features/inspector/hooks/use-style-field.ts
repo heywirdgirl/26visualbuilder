@@ -6,20 +6,28 @@
 import { TreeNode } from "@/core/types/builder.types";
 import { StyleProps } from "@/core/types/style.types";
 import { useBuilderStore } from "@/core/store/builder-store";
-import { getEffectiveStyleValue, hasOverrideAt } from "@/core/utils/style-cascade";
+import {
+  getEffectiveStyleValue,
+  hasOverrideAt,
+  resolveLayer,
+} from "@/core/utils/style-cascade";
 
 export function useStyleField(node: TreeNode) {
   const activeBreakpoint = useBuilderStore((s) => s.activeBreakpoint);
-  const updateNodeStyle = useBuilderStore((s) => s.updateNodeStyle);
-  const clearNodeStyleOverride = useBuilderStore((s) => s.clearNodeStyleOverride);
+  const activeState = useBuilderStore((s) => s.activeState);
+  const updateNodeStyleLayer = useBuilderStore((s) => s.updateNodeStyleLayer);
+  const clearNodeStyleLayerOverride = useBuilderStore((s) => s.clearNodeStyleLayerOverride);
+  const layer = resolveLayer(activeBreakpoint, activeState);
 
   return {
+    layer,
+    state: activeState,
     breakpoint: activeBreakpoint,
     getValue: <K extends keyof StyleProps>(key: K) =>
-      getEffectiveStyleValue(node.style, activeBreakpoint, key),
+      getEffectiveStyleValue(node.style, layer, key),
     setValue: <K extends keyof StyleProps>(key: K, value: StyleProps[K]) =>
-      updateNodeStyle(node.id, activeBreakpoint, { [key]: value } as Partial<StyleProps>),
-    hasOverride: (key: keyof StyleProps) => hasOverrideAt(node.style, activeBreakpoint, key),
-    clearOverride: (key: keyof StyleProps) => clearNodeStyleOverride(node.id, activeBreakpoint, key),
+      updateNodeStyleLayer(node.id, layer, { [key]: value } as Partial<StyleProps>),
+    hasOverride: (key: keyof StyleProps) => hasOverrideAt(node.style, layer, key),
+    clearOverride: (key: keyof StyleProps) => clearNodeStyleLayerOverride(node.id, layer, key),
   };
 }

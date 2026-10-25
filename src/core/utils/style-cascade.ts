@@ -1,6 +1,19 @@
 // core/utils/style-cascade.ts
 
-import { NodeStyle, StyleProps, Breakpoint } from "@/core/types/style.types";
+import {
+  NodeStyle,
+  StyleProps,
+  Breakpoint,
+  StateVariant,
+  STYLE_LAYER_KEYS,
+} from "@/core/types/style.types";
+
+export type ActiveState = "normal" | StateVariant;
+export type StyleLayer = Breakpoint | StateVariant;
+
+export function resolveLayer(breakpoint: Breakpoint, state: ActiveState): StyleLayer {
+  return state === "normal" ? breakpoint : state;
+}
 
 // Giá trị "đang thấy" tại 1 breakpoint — cascade xuống md/base giống đúng cách trình duyệt
 // áp Tailwind thật khi resize (lg: kế thừa md: nếu không override, md: kế thừa base nếu
@@ -8,21 +21,36 @@ import { NodeStyle, StyleProps, Breakpoint } from "@/core/types/style.types";
 // lưu hay class thật xuất ra (styleToClasses ở Phase 2 không dùng hàm này).
 export function getEffectiveStyleValue<K extends keyof StyleProps>(
   style: NodeStyle,
-  breakpoint: Breakpoint,
+  layer: StyleLayer,
   key: K
 ): StyleProps[K] {
-  if (breakpoint === "lg") return style.lg?.[key] ?? style.md?.[key] ?? style.base[key];
-  if (breakpoint === "md") return style.md?.[key] ?? style.base[key];
-  return style.base[key];
+  switch (layer) {
+    case "lg":
+      return style.lg?.[key] ?? style.md?.[key] ?? style.base[key];
+    case "md":
+      return style.md?.[key] ?? style.base[key];
+    case "base":
+      return style.base[key];
+    default:
+      return style[layer]?.[key] ?? style.base[key];
+  }
 }
 
 // Field có bị override RIÊNG tại breakpoint đang xem không (khác giá trị kế thừa) —
 // dùng để hiện nút "reset về kế thừa". base luôn coi là không override.
 export function hasOverrideAt<K extends keyof StyleProps>(
   style: NodeStyle,
-  breakpoint: Breakpoint,
+  layer: StyleLayer,
   key: K
 ): boolean {
-  if (breakpoint === "base") return false;
-  return style[breakpoint]?.[key] !== undefined;
+  if (layer === "base") return false;
+  return style[layer]?.[key] !== undefined;
+}
+
+export function hasAnyValue(style: NodeStyle, key: keyof StyleProps): boolean {
+  return STYLE_LAYER_KEYS.some((layer) => style[layer]?.[key] !== undefined);
+}
+
+export function anyKeyHasValue(style: NodeStyle, keys: readonly (keyof StyleProps)[]): boolean {
+  return keys.some((key) => hasAnyValue(style, key));
 }

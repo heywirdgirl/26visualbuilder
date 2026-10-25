@@ -1,3 +1,5 @@
+// src/features/inspector/components/style-controls.tsx
+
 "use client";
 
 import { TreeNode } from "@/core/types/builder.types";
