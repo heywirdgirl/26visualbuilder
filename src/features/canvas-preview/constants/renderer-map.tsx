@@ -56,6 +56,26 @@ function containerEntry(tag: string): RendererEntry {
   };
 }
 
+function attrContainerEntry(tag: string): RendererEntry {
+  return {
+    jsxTagName: tag,
+    render: (node, children, className) => {
+      const props = node.props;
+      return React.createElement(
+        tag,
+        {
+          "data-node-id": node.id,
+          id: typeof props.id === "string" && props.id ? props.id : undefined,
+          title: typeof props.title === "string" && props.title ? props.title : undefined,
+          "aria-label": typeof props.ariaLabel === "string" && props.ariaLabel ? props.ariaLabel : undefined,
+          className,
+        },
+        children
+      );
+    },
+  };
+}
+
 function textTagEntry(tag: string): RendererEntry {
   return {
     jsxTagName: tag,
@@ -101,7 +121,7 @@ export const rendererMap: Record<string, RendererEntry> = {
   [SYSTEM_NODE_IDS.component]: systemComponentEntry,
   [SYSTEM_NODE_IDS.folder]: systemFolderEntry,
   // ══ HTML — Layout (container, dùng chung helper) ══
-  "html.div": containerEntry("div"),
+  "html.div": attrContainerEntry("div"),
   "html.section": containerEntry("section"),
   "html.main": containerEntry("main"),
   "html.header": containerEntry("header"),

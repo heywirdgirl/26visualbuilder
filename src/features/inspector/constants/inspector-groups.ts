@@ -10,6 +10,7 @@ import {
   Palette,
   Blend,
   RotateCw,
+  FileText,
   type LucideIcon,
 } from "lucide-react";
 import type { NodeDefinition } from "@/core/types/node-definition.types";
@@ -24,7 +25,7 @@ import {
 } from "./style-field-schema";
 
 export type GroupId =
-  | "common" | "preset" | "layout" | "sizing" | "spacing" | "self-layout"
+  | "common" | "content" | "preset" | "layout" | "sizing" | "spacing" | "self-layout"
   | "position" | "typography" | "appearance" | "effects" | "transform";
 
 export interface InspectorGroup {
@@ -45,6 +46,7 @@ const COMMON_KEYS_BY_KIND: Record<NodeKind, (keyof StyleProps)[]> = {
 
 export const INSPECTOR_GROUPS: InspectorGroup[] = [
   { id: "common", label: "Hay dùng", icon: Star, fields: [] },
+  { id: "content", label: "Nội dung", icon: FileText, fields: [] },
   { id: "preset", label: "Preset", icon: Sparkles, fields: [] },
   {
     id: "layout", label: "Layout", icon: LayoutGrid,
@@ -73,7 +75,7 @@ export const INSPECTOR_GROUPS: InspectorGroup[] = [
 ];
 
 export function getGroupKeys(group: InspectorGroup, kind: NodeKind): (keyof StyleProps)[] {
-  if (group.id === "preset") return [];
+  if (group.id === "content" || group.id === "preset") return [];
   if (group.id === "common") return COMMON_KEYS_BY_KIND[kind];
   return group.fields.filter((key) => {
     const spec = FIELD_SPEC_BY_KEY.get(key);
@@ -87,9 +89,12 @@ export function getGroupFields(group: InspectorGroup, kind: NodeKind): StyleFiel
     .filter((spec): spec is StyleFieldSpec => !!spec);
 }
 
-export function getVisibleGroups(kind: NodeKind): InspectorGroup[] {
+export function getVisibleGroups(kind: NodeKind, hasProps: boolean): InspectorGroup[] {
   return INSPECTOR_GROUPS.filter(
-    (group) => group.id === "common" || group.id === "preset" || getGroupKeys(group, kind).length > 0
+    (group) =>
+      group.id === "common" ||
+      group.id === "preset" ||
+      (group.id === "content" ? hasProps : getGroupKeys(group, kind).length > 0)
   );
 }
 

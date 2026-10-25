@@ -39,7 +39,7 @@ export function InspectorPanel() {
   const def = getNodeDefinition(activeNode.type);
   const isInstance = def?.nodeKind === "component-instance";
   const kind = getNodeKind(def);
-  const groups = getVisibleGroups(kind);
+  const groups = getVisibleGroups(kind, (def?.propsSchema.length ?? 0) > 0);
   const current = groups.find((group) => group.id === selectedId) ?? groups[0];
   const fields = current ? getGroupFields(current, kind) : [];
 
@@ -62,8 +62,6 @@ export function InspectorPanel() {
         </p>
       ) : (
         <div className="min-h-0 overflow-y-auto p-3 flex flex-col gap-3 bg-white/30 backdrop-blur-[2px]">
-          <DynamicPropsForm node={activeNode} />
-
           <div className="flex rounded-md border p-0.5 text-[11px]">
             {STATES.map((state) => (
               <button
@@ -109,6 +107,8 @@ export function InspectorPanel() {
           <div className="flex flex-col gap-3 border-t pt-3">
             {current?.id === "preset" ? (
               <PresetSection key={activeNode.id} node={activeNode} />
+            ) : current?.id === "content" ? (
+              <DynamicPropsForm node={activeNode} />
             ) : (
               <>
                 <h3 className="text-xs font-medium">{current?.label}</h3>
