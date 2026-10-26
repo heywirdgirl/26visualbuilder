@@ -6,7 +6,7 @@ import { useActiveNode, useBuilderStore } from "@/core/store/builder-store";
 import { getNodeDefinition } from "@/core/registry/node-registry";
 import { cn } from "@/core/utils/cn";
 import type { ActiveState } from "@/core/utils/style-cascade";
-import { BreakpointSwitcher } from "./breakpoint-switcher";
+import { ContextBar } from "./context-bar";
 import { DynamicPropsForm } from "./dynamic-props-form";
 import { PresetSection } from "./preset-section";
 import { SchemaField } from "./schema-field";
@@ -19,12 +19,7 @@ import {
   type GroupId,
 } from "../constants/inspector-groups";
 
-const STATES: { id: ActiveState; label: string }[] = [
-  { id: "normal", label: "Thường" },
-  { id: "hover", label: "Hover" },
-  { id: "focus", label: "Focus" },
-  { id: "active", label: "Active" },
-];
+
 
 export function InspectorPanel() {
   const activeNode = useActiveNode();
@@ -44,8 +39,13 @@ export function InspectorPanel() {
   const fields = current ? getGroupFields(current, kind) : [];
 
   return (
-    <div className="fixed top-4 right-4 w-80 bg-white/50 border rounded-lg shadow-lg flex flex-col z-[6000] max-h-[80vh]">
-      <div className="sticky top-0 bg-white px-4 py-3 flex items-center justify-between border-b border-zinc-100">
+    <div
+      className={cn(
+        "fixed top-4 right-4 w-80 bg-white/50 border rounded-lg shadow-lg flex flex-col z-[6000] max-h-[80vh]",
+        activeState !== "normal" && "ring-2 ring-sky-400"
+      )}
+    >
+      <div className="sticky top-0 bg-white px-2 py-2 flex items-center justify-between border-b border-zinc-100">
         <span className="text-sm font-medium">{def?.title ?? activeNode.type}</span>
         <button
           type="button"
@@ -62,23 +62,8 @@ export function InspectorPanel() {
         </p>
       ) : (
         <div className="min-h-0 overflow-y-auto p-3 flex flex-col gap-3 bg-white/30 backdrop-blur-[2px]">
-          <div className="flex rounded-md border p-0.5 text-[11px]">
-            {STATES.map((state) => (
-              <button
-                key={state.id}
-                type="button"
-                onClick={() => setActiveState(state.id)}
-                className={cn(
-                  "flex-1 rounded px-1.5 py-1",
-                  activeState === state.id ? "bg-sky-500 text-white" : "hover:bg-zinc-100"
-                )}
-              >
-                {state.label}
-              </button>
-            ))}
-          </div>
 
-          {activeState === "normal" && <BreakpointSwitcher />}
+          <ContextBar />
 
           <div className="grid grid-cols-4 gap-1">
             {groups.map((group) => {
